@@ -4,6 +4,7 @@ import LandingView from './pages/landing/Landing';
 import AppLayout from './AppLayout';
 import Signup from './pages/auth/Signup';
 import Login from './pages/auth/Login';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -17,15 +18,17 @@ const LandingPage: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/app" element={<AppLayout />} />
-        <Route path="/studio" element={<AppLayout />} />
-      </Routes>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/app" element={<AppLayout />} />
+          <Route path="/studio" element={<AppLayout />} />
+        </Routes>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 };
 

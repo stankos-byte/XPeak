@@ -50,6 +50,7 @@
         color: #f8fafc;
         font-family: 'Inter', sans-serif;
       }
+      
       /* Custom Scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
@@ -63,6 +64,26 @@
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #00E1FF;
+      }
+      
+      /* Light Theme Overrides */
+      [data-theme="light"] body {
+        background-color: #f1f5f9;
+        color: #0f172a;
+      }
+      
+      [data-theme="light"] #root {
+        background-color: #f1f5f9;
+      }
+      
+      [data-theme="light"] ::-webkit-scrollbar-track {
+        background: #f1f5f9;
+      }
+      [data-theme="light"] ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+      }
+      [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+        background: #0891b2;
       }
     </style>
   <script type="importmap">
@@ -79,8 +100,19 @@
 }
 </script>
 <link rel="stylesheet" href="/index.css">
-</head>
+  </head>
   <body>
+    <script>
+      // Set theme immediately to avoid flash
+      (function() {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        if (savedTheme === 'light') {
+          document.body.style.backgroundColor = '#f1f5f9';
+          document.body.style.color = '#0f172a';
+        }
+      })();
+    </script>
     <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
