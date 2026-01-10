@@ -735,7 +735,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-background text-gray-100 flex flex-col md:flex-row font-sans">
       <nav className="hidden md:flex w-24 lg:w-72 bg-background border-r border-secondary/10 flex-col py-10 sticky top-0 h-screen z-20 justify-between">
         <div className="flex flex-col items-center lg:items-start px-0 lg:px-10 w-full">
-          <div className="flex items-center gap-3 mb-16 text-primary"><Swords size={40} /><span className="hidden lg:block text-3xl font-black uppercase tracking-tighter italic">LevelUp</span></div>
+          <div className="flex items-center gap-3 mb-16 text-primary"><Swords size={40} /><span className="hidden lg:block text-3xl font-black uppercase tracking-tighter italic">XPeak</span></div>
           <div className="w-full space-y-4">{navItems.map(item => (
             <button key={item.id} onClick={() => setActiveTab(item.id as any)} className={`w-full flex items-center justify-center lg:justify-start gap-4 p-5 rounded-2xl transition-all border ${activeTab === item.id ? 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_15px_rgba(0,225,255,0.1)]' : 'text-secondary border-transparent hover:bg-surface hover:text-gray-100'}`}>
               <item.icon size={26} /><span className="hidden lg:block font-black uppercase tracking-widest text-xs">{item.label}</span>

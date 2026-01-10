@@ -45,7 +45,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
               <Swords size={64} className="text-primary" />
             </div>
             <h1 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter italic">
-              LevelUp
+              XPeak
             </h1>
           </div>
           

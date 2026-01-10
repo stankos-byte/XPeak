@@ -25,7 +25,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
         feature: 'Feature Request'
     };
 
-    const subject = encodeURIComponent(`LevelUp Life: ${typeLabels[feedbackType]}`);
+    const subject = encodeURIComponent(`XPeak: ${typeLabels[feedbackType]}`);
     const body = encodeURIComponent(message);
     window.location.href = `mailto:developer@example.com?subject=${subject}&body=${body}`;
     

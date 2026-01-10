@@ -186,7 +186,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
       // Construct Context
       const activeTasksCount = tasks.filter(t => !t.completed).length;
       const systemPrompt = `
-        You are the LevelUp OS AI. You are helpful, strategic, and concise. 
+        You are the XPeak OS AI. You are helpful, strategic, and concise. 
         You speak like a sci-fi system interface or a tactical handler.
         
         CURRENT USER STATUS:
