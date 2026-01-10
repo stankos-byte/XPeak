@@ -1,8 +1,8 @@
 
 import React from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
-import { UserProfile, SkillCategory } from '../types';
-import { getLevelProgress } from '../utils/gamification';
+import { UserProfile, SkillCategory } from '../../types';
+import { getLevelProgress } from '../../utils/gamification';
 
 interface SkillRadarProps {
   user: UserProfile;

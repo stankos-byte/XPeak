@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { Task, Difficulty, SkillCategory } from '../types';
-import { SKILL_COLORS, DIFFICULTY_MULTIPLIERS } from '../constants';
+import { Task, Difficulty, SkillCategory } from '../../types';
+import { SKILL_COLORS, DIFFICULTY_MULTIPLIERS } from '../../constants';
 import { CheckCircle2, Circle, Flame, Repeat, Pencil, Trash2, Undo2, Copy } from 'lucide-react';
 
 interface TaskCardProps {

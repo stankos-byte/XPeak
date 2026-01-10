@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Difficulty, SkillCategory, Task, TaskTemplate } from '../types';
+import { Difficulty, SkillCategory, Task, TaskTemplate } from '../../types';
 import { X, ChevronDown, Save, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 

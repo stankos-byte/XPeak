@@ -1,9 +1,9 @@
 
 import React, { useState, useRef } from 'react';
 import { Crown, Pencil, Save, TrendingUp, Mountain, CheckSquare, Square, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, Activity, Calendar, Users, UserPlus, Trophy, Circle } from 'lucide-react';
-import { UserProfile, Goal, SkillCategory } from '../types';
-import SkillRadar from './SkillRadar';
-import { getLevelProgress } from '../utils/gamification';
+import { UserProfile, Goal, SkillCategory } from '../../types';
+import SkillRadar from '../charts/SkillRadar';
+import { getLevelProgress } from '../../utils/gamification';
 
 interface WidgetProps {
   isCustomizing: boolean;

@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command } from 'lucide-react';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
-import { UserProfile, Task, MainQuest, FriendChallenge, Friend, Difficulty, SkillCategory, ChatMessage } from '../types';
+import { UserProfile, Task, MainQuest, FriendChallenge, Friend, Difficulty, SkillCategory, ChatMessage } from '../../types';
 
 interface AIAssistantProps {
   user: UserProfile;

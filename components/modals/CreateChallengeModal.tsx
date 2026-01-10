@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Friend, FriendChallenge } from '../types';
+import { Friend, FriendChallenge } from '../../types';
 import { X, Swords, Target, Trophy, Users } from 'lucide-react';
 
 interface CreateChallengeModalProps {
