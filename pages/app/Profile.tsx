@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, ProfileLayout, WidgetId } from '../../types';
-import { User, LayoutGrid, Sparkles } from 'lucide-react';
+import { User, LayoutGrid, Sparkles, Settings } from 'lucide-react';
 import { IdentityWidget, SkillMatrixWidget, EvolutionWidget, ObjectivesWidget, CalendarWidget, FriendsWidget } from '../../components/widgets/ProfileWidgets';
 
 interface ProfileViewProps {
@@ -13,6 +13,7 @@ interface ProfileViewProps {
   flashKey: number;
   layout: ProfileLayout;
   onUpdateLayout: (layout: ProfileLayout) => void;
+  onOpenSettings: () => void;
 }
 
 const ProfileView: React.FC<ProfileViewProps> = ({ 
@@ -24,7 +25,8 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   levelProgress, 
   flashKey, 
   layout, 
-  onUpdateLayout 
+  onUpdateLayout,
+  onOpenSettings
 }) => {
   const [isCustomizing, setIsCustomizing] = useState(false);
 
@@ -62,20 +64,48 @@ const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-10 animate-in slide-in-from-right-8 duration-500 pb-20 relative">
+    <div className="max-w-4xl mx-auto space-y-6 animate-in slide-in-from-right-8 duration-500 pb-20 relative">
+      {/* Profile Header with Settings and Customize Button */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <div className="h-20 w-20 bg-surface rounded-full flex items-center justify-center border-4 border-primary text-primary relative shadow-[0_0_20px_rgba(0,225,255,0.3)]">
-            <User size={40} />
-            <div className="absolute -bottom-1 -right-1 bg-background border border-primary/40 rounded-full p-1.5">
-              <div className="w-2.5 h-2.5 bg-primary rounded-full animate-pulse"></div>
+        {/* Profile Section - Desktop */}
+        <div className="hidden md:flex items-center gap-6">
+          <button 
+            onClick={onOpenSettings}
+            className="relative group"
+          >
+            <div className="w-20 h-20 rounded-full bg-surface border-2 border-primary/40 flex items-center justify-center text-primary group-hover:border-primary transition-all">
+              <User size={36} />
             </div>
-          </div>
+            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary rounded-full flex items-center justify-center border-2 border-background group-hover:scale-110 transition-transform">
+              <Settings size={16} className="text-background" />
+            </div>
+          </button>
           <div>
-            <h1 className="text-3xl md:text-4xl font-black text-white uppercase tracking-tighter italic">{user.name}</h1>
-            <p className="text-primary font-black uppercase tracking-widest text-xs mt-1">Evolved Rank {user.level} Protocol</p>
+            <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">{user.name}</h1>
+            <p className="text-primary text-sm font-bold uppercase tracking-wider">Evolved Rank {user.level} Protocol</p>
           </div>
         </div>
+
+        {/* Profile Section - Mobile */}
+        <div className="md:hidden flex items-center gap-4">
+          <button 
+            onClick={onOpenSettings}
+            className="relative"
+          >
+            <div className="w-16 h-16 rounded-full bg-surface border-2 border-primary/40 flex items-center justify-center text-primary">
+              <User size={28} />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-primary rounded-full flex items-center justify-center border-2 border-background">
+              <Settings size={13} className="text-background" />
+            </div>
+          </button>
+          <div>
+            <h1 className="text-2xl font-black text-white uppercase tracking-tighter italic">{user.name}</h1>
+            <p className="text-primary text-xs font-bold uppercase tracking-wider">Evolved Rank {user.level} Protocol</p>
+          </div>
+        </div>
+
+        {/* Customize Button */}
         <button onClick={() => setIsCustomizing(!isCustomizing)} className={`p-4 rounded-xl border transition-all ${isCustomizing ? 'bg-primary border-primary text-background shadow-[0_0_25px_rgba(0,225,255,0.5)]' : 'bg-surface border-secondary/20 text-secondary hover:text-primary'}`}>
           <LayoutGrid size={28} strokeWidth={isCustomizing ? 3 : 2} />
         </button>

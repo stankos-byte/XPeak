@@ -28,6 +28,7 @@ import ProfileView from './pages/app/Profile';
 import ToolsView from './pages/app/Tools';
 import FriendsView from './pages/app/Friends';
 import AssistantView from './pages/app/Assistant';
+import SettingsView from './pages/app/Settings';
 import { 
   Swords, 
   Trophy, 
@@ -207,6 +208,7 @@ const App: React.FC = () => {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isChallengeModalOpen, setIsChallengeModalOpen] = useState(false);
   const [challengeToDelete, setChallengeToDelete] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Habit Sync Logic
   useEffect(() => {
@@ -749,14 +751,35 @@ const App: React.FC = () => {
            </button>
         </div>
       </nav>
-      <main className="flex-1 p-6 lg:p-14 pb-32 overflow-y-auto">
-        {activeTab === 'profile' && <ProfileView user={user} handleUpdateIdentity={(i:any)=>setUser(p=>({...p,identity:i}))} handleAddGoal={(t:any)=>setUser(p=>({...p,goals:[{id:crypto.randomUUID(),title:t,completed:false},...p.goals]}))} handleToggleGoal={(id:any)=>setUser(p=>({...p,goals:p.goals.map(g=>g.id===id?{...g,completed:!g.completed}:g)}))} handleDeleteGoal={(id:any)=>setUser(p=>({...p,goals:p.goals.filter(g=>g.id!==id)}))} levelProgress={getLevelProgress(user.totalXP, user.level)} flashKey={flashKey} layout={user.layout || DEFAULT_LAYOUT} onUpdateLayout={(l:any)=>setUser(p=>({...p,layout:l}))} />}
+      <main className="flex-1 p-6 lg:p-14 pb-32 pt-20 md:pt-6 overflow-y-auto">
+        {activeTab === 'profile' && (
+          <ProfileView 
+            user={user} 
+            handleUpdateIdentity={(i:any)=>setUser(p=>({...p,identity:i}))} 
+            handleAddGoal={(t:any)=>setUser(p=>({...p,goals:[{id:crypto.randomUUID(),title:t,completed:false},...p.goals]}))} 
+            handleToggleGoal={(id:any)=>setUser(p=>({...p,goals:p.goals.map(g=>g.id===id?{...g,completed:!g.completed}:g)}))} 
+            handleDeleteGoal={(id:any)=>setUser(p=>({...p,goals:p.goals.filter(g=>g.id!==id)}))} 
+            levelProgress={getLevelProgress(user.totalXP, user.level)} 
+            flashKey={flashKey} 
+            layout={user.layout || DEFAULT_LAYOUT} 
+            onUpdateLayout={(l:any)=>setUser(p=>({...p,layout:l}))} 
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+        )}
         {activeTab === 'dashboard' && <DashboardView user={user} tasks={tasks} handleCompleteTask={handleCompleteTask} handleUncompleteTask={handleUncompleteTask} handleDeleteTask={(id:any)=>setTasks(t=>t.filter(x=>x.id!==id))} handleEditTask={(t:any)=>{setEditingTask(t);setIsModalOpen(true);}} handleSaveTemplate={handleSaveTemplate} setIsModalOpen={setIsModalOpen} setEditingTask={setEditingTask} levelProgress={getLevelProgress(user.totalXP, user.level)} popups={xpPopups} flashKey={flashKey} />}
         {activeTab === 'quests' && <QuestsView mainQuests={mainQuests} expandedNodes={expandedNodes} toggleNode={toggleNode} setTextModalConfig={setTextModalConfig} setQuestTaskConfig={setQuestTaskConfig} handleToggleQuestTask={handleToggleQuestTask} handleQuestOracle={handleQuestOracle} oraclingQuestId={oraclingQuestId} handleDeleteQuest={handleDeleteQuest} handleDeleteCategory={handleDeleteCategory} handleDeleteQuestTask={handleDeleteQuestTask} handleSaveTemplate={handleSaveTemplate} popups={xpPopups} />}
         {activeTab === 'tools' && <ToolsView switchTimerMode={switchTimerMode} timerMode={timerMode} formatTime={(s:any)=>`${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`} timerTimeLeft={timerTimeLeft} toggleTimer={toggleTimer} isTimerActive={isTimerActive} resetTimer={resetTimer} handleAdjustTimer={handleAdjustTimer} />}
         {activeTab === 'friends' && <FriendsView user={user} friends={friends} challenges={challenges} onCreateChallenge={() => setIsChallengeModalOpen(true)} onDeleteChallenge={(id) => setChallengeToDelete(id)} />}
         {activeTab === 'assistant' && <AssistantView user={user} tasks={tasks} quests={mainQuests} friends={friends} challenges={challenges} onAddTask={handleAiCreateTask} onAddQuest={handleAiCreateQuest} onAddChallenge={handleAiCreateChallenge} messages={aiMessages} setMessages={setAiMessages} />}
       </main>
+
+      {/* Mobile Header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-b border-secondary/20 p-4 flex items-center justify-center z-50">
+        <div className="flex items-center gap-3">
+          <Swords size={28} className="text-primary" />
+          <span className="text-xl font-black uppercase tracking-tighter italic text-primary">XPeak</span>
+        </div>
+      </div>
 
       {/* Restored Mobile Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-t border-secondary/20 p-4 flex justify-around z-50 pb-safe">
@@ -879,6 +902,8 @@ const App: React.FC = () => {
       />
 
       <FeedbackModal isOpen={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
+      
+      {isSettingsOpen && <SettingsView user={user} onClose={() => setIsSettingsOpen(false)} />}
       
       {showLevelUp && <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/95 backdrop-blur-3xl animate-in zoom-in-95 duration-700"><Trophy size={160} className="text-primary animate-bounce shadow-primary/50" /><h2 className="text-8xl font-black text-primary mt-12 mb-4 tracking-tighter uppercase italic drop-shadow-[0_0_30px_rgba(0,225,255,0.6)]">Level Up</h2><p className="text-3xl text-white font-black uppercase tracking-widest">Protocol Rank {showLevelUp.level} Authenticated</p></div>}
     </div>
