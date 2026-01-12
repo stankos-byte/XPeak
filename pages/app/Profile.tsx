@@ -110,29 +110,31 @@ const ProfileView: React.FC<ProfileViewProps> = ({
           <LayoutGrid size={28} strokeWidth={isCustomizing ? 3 : 2} />
         </button>
       </div>
-      <section className="bg-surface border border-secondary/20 rounded-2xl p-6 shadow-xl relative overflow-hidden group">
-        <div className="absolute top-0 left-0 w-full h-1 bg-primary opacity-20"></div>
-        <div className="flex justify-between items-end mb-2">
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl md:text-3xl font-black text-white">{Math.floor(levelProgress.current)}</span>
-            <span className="text-secondary text-sm font-bold">/ {Math.floor(levelProgress.max)} XP</span>
-          </div>
-          <span className="text-primary font-black italic">{Math.floor(levelProgress.percentage)}% TO NEXT RANK</span>
-        </div>
-        <div className="w-full h-3 bg-background rounded-full overflow-hidden border border-secondary/20 relative mb-4">
-          <div className="h-full bg-primary transition-all duration-1000 ease-out relative shadow-[0_0_15px_rgba(0,225,255,0.6)]" style={{ width: `${levelProgress.percentage}%` }}>
-            <div className="absolute inset-0 bg-white opacity-20 w-full animate-pulse"></div>
-            <div key={flashKey} className="absolute inset-0 bg-white opacity-0 animate-bar-flash pointer-events-none"></div>
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2">Level Status</h3>
+          <div className="flex items-center gap-1.5 text-primary">
+            <Sparkles size={14} className="animate-pulse" />
+            <span className="text-xs font-black uppercase tracking-widest">Lifetime XP: {Math.floor(user.totalXP)}</span>
           </div>
         </div>
-        <div className="flex items-center justify-between pt-3 border-t border-secondary/10">
-          <span className="text-[10px] font-black uppercase tracking-widest text-secondary">Lifetime Accumulation</span>
-          <div className="flex items-center gap-2">
-            <Sparkles size={14} className="text-primary" />
-            <span className="text-sm font-black text-white tracking-widest">{Math.floor(user.totalXP)} XP</span>
+        <div className="bg-surface border border-secondary/20 rounded-2xl p-6 shadow-xl relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-full h-1 bg-primary opacity-20"></div>
+          <div className="flex justify-between items-end mb-2">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl md:text-3xl font-black text-white">{Math.floor(levelProgress.current)}</span>
+              <span className="text-secondary text-sm font-bold">/ {Math.floor(levelProgress.max)} XP</span>
+            </div>
+            <span className="text-primary font-black italic">{Math.floor(levelProgress.percentage)}% COMPLETE</span>
+          </div>
+          <div className="w-full h-3 bg-background rounded-full overflow-hidden border border-secondary/20 relative">
+            <div className="h-full bg-primary transition-all duration-1000 ease-out relative shadow-[0_0_15px_rgba(0,225,255,0.6)]" style={{ width: `${levelProgress.percentage}%` }}>
+                <div className="absolute inset-0 bg-white opacity-20 w-full animate-pulse"></div>
+                <div key={flashKey} className="absolute inset-0 bg-white opacity-0 animate-bar-flash pointer-events-none"></div>
+            </div>
           </div>
         </div>
-      </section>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {sortedWidgets.map((w, idx) => {
           if (!w.enabled && !isCustomizing) return null;

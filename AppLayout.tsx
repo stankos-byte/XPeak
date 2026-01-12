@@ -254,6 +254,33 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  // Play notification sound when timer ends
+  const playTimerEndSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // Pleasant notification tone - longer and more noticeable
+      oscillator.frequency.value = 800; // Hz
+      oscillator.type = 'sine';
+      
+      // Fade in and out for smoothness, but louder and longer
+      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+      gainNode.gain.linearRampToValueAtTime(0.25, audioContext.currentTime + 0.1);
+      gainNode.gain.linearRampToValueAtTime(0.25, audioContext.currentTime + 0.5);
+      gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.8);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.8);
+    } catch (error) {
+      console.log('Audio playback not supported');
+    }
+  };
+
   useEffect(() => {
     let interval: any = null;
     if (isTimerActive && timerEndTime) {
@@ -261,17 +288,18 @@ const App: React.FC = () => {
         const now = Date.now();
         const diff = Math.ceil((timerEndTime - now) / 1000);
         if (diff <= 0) {
-          setTimerTimeLeft(0);
           setIsTimerActive(false);
           setTimerEndTime(null);
-          // Optional: Notification sound can be triggered here
+          playTimerEndSound(); // Play notification sound
+          // Automatically reset to the appropriate duration
+          setTimerTimeLeft(timerMode === 'work' ? workDuration : breakDuration);
         } else {
           setTimerTimeLeft(diff);
         }
       }, 500); // Check every 500ms to correct drift quickly
     }
     return () => clearInterval(interval);
-  }, [isTimerActive, timerEndTime]);
+  }, [isTimerActive, timerEndTime, timerMode, workDuration, breakDuration]);
 
   useEffect(() => { localStorage.setItem('lvlup_user', JSON.stringify(user)); }, [user]);
   useEffect(() => { localStorage.setItem('lvlup_tasks', JSON.stringify(tasks)); }, [tasks]);
