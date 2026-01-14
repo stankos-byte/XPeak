@@ -1,19 +1,20 @@
 
 import React, { useState, useEffect } from 'react';
-import { Friend, ChallengeQuestCategory, ChallengeQuestTask, Difficulty, SkillCategory, ChallengeModeType } from '../../types';
+import { Friend, ChallengeQuestCategory, ChallengeQuestTask, Difficulty, SkillCategory, ChallengeModeType, FriendChallenge } from '../../types';
 import { X, Swords, Trophy, Users, Plus, Trash2, Edit, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface CreateChallengeModalProps {
   isOpen: boolean;
   onClose: () => void;
   friends: Friend[];
+  editingChallenge?: FriendChallenge | null;
   onSubmit: (data: any) => void;
 }
 
-const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onClose, friends, onSubmit }) => {
+const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onClose, friends, editingChallenge, onSubmit }) => {
   const [challengeType, setChallengeType] = useState<ChallengeModeType>('competitive');
   const [title, setTitle] = useState('');
-  const [partnerId, setPartnerId] = useState('');
+  const [partnerIds, setPartnerIds] = useState<string[]>([]);
   const [categories, setCategories] = useState<ChallengeQuestCategory[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   
@@ -31,10 +32,21 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
 
   useEffect(() => {
     if (isOpen) {
-      setTitle('');
-      setPartnerId(friends.length > 0 ? friends[0].id : '');
-      setCategories([]);
-      setExpandedCategories(new Set());
+      if (editingChallenge) {
+        // Populate form with editing challenge data
+        setTitle(editingChallenge.title);
+        setPartnerIds(editingChallenge.partnerIds);
+        setChallengeType(editingChallenge.mode);
+        setCategories(editingChallenge.categories);
+        setExpandedCategories(new Set(editingChallenge.categories.map(c => c.id)));
+      } else {
+        // Reset form for new challenge
+        setTitle('');
+        setPartnerIds([]);
+        setChallengeType('competitive');
+        setCategories([]);
+        setExpandedCategories(new Set());
+      }
       setEditingCategory(null);
       setNewCategoryTitle('');
       setEditingTask(null);
@@ -44,9 +56,17 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
       setNewTaskSkill(SkillCategory.MISC);
       setTaskFormCategoryId(null);
     }
-  }, [isOpen, friends]);
+  }, [isOpen, editingChallenge, friends]);
 
   if (!isOpen) return null;
+
+  const togglePartner = (friendId: string) => {
+    setPartnerIds(prev => 
+      prev.includes(friendId)
+        ? prev.filter(id => id !== friendId)
+        : [...prev, friendId]
+    );
+  };
 
   const handleAddCategory = () => {
     if (!newCategoryTitle.trim()) return;
@@ -159,12 +179,12 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !partnerId) return;
+    if (!title.trim() || partnerIds.length === 0) return;
 
     onSubmit({
       title,
       description: '',
-      partnerId,
+      partnerIds,
       categories,
       mode: challengeType,
     });
@@ -177,7 +197,7 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
         <div className="flex items-center justify-between p-5 border-b border-secondary/20 bg-background/40">
           <h2 className="text-xl font-black text-white uppercase tracking-tighter italic flex items-center gap-2">
             <Swords size={20} className="text-primary" />
-            New Contract
+            {editingChallenge ? 'Modify Contract' : 'New Contract'}
           </h2>
           <button onClick={onClose} className="text-secondary hover:text-primary transition-colors">
             <X size={24} strokeWidth={3} />
@@ -228,22 +248,54 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
 
           <div>
             <label className="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">
-              {challengeType === 'coop' ? 'Partner' : 'Opponent'}
+              {challengeType === 'coop' ? 'Partners' : 'Opponents'} ({partnerIds.length} selected)
             </label>
-            <div className="relative">
-                <select 
-                    value={partnerId}
-                    onChange={(e) => setPartnerId(e.target.value)}
-                    className="w-full bg-background border border-secondary/30 rounded-xl p-4 text-white outline-none font-bold appearance-none cursor-pointer"
-                    disabled={friends.length === 0}
-                >
-                    {friends.map(f => (
-                        <option key={f.id} value={f.id}>{f.name}</option>
-                    ))}
-                    {friends.length === 0 && <option value="">No Operatives Found</option>}
-                </select>
-                <Users size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary pointer-events-none" />
-            </div>
+            <p className="text-xs text-secondary/70 mb-2 font-medium">
+              {challengeType === 'coop' 
+                ? '✓ Select multiple teammates for cooperative missions' 
+                : '✓ Select one or more opponents to compete against'}
+            </p>
+            {friends.length === 0 ? (
+              <div className="bg-background border border-secondary/30 rounded-xl p-4 text-secondary font-bold text-center">
+                No Operatives Found
+              </div>
+            ) : (
+              <div className="bg-background border border-secondary/30 rounded-xl p-3 space-y-2 max-h-48 overflow-y-auto">
+                {friends.map(friend => (
+                  <button
+                    key={friend.id}
+                    type="button"
+                    onClick={() => togglePartner(friend.id)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg transition-all ${
+                      partnerIds.includes(friend.id)
+                        ? 'bg-primary/20 border border-primary/50 shadow-lg shadow-primary/10'
+                        : 'bg-surface border border-secondary/20 hover:border-secondary/40'
+                    }`}
+                  >
+                    <div className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                      partnerIds.includes(friend.id)
+                        ? 'bg-primary border-primary'
+                        : 'bg-transparent border-secondary/50'
+                    }`}>
+                      {partnerIds.includes(friend.id) && (
+                        <svg className="w-3 h-3 text-background" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <div 
+                      className="w-3 h-3 rounded-full flex-shrink-0" 
+                      style={{ backgroundColor: friend.color }}
+                    />
+                    <span className={`font-bold flex-1 text-left ${
+                      partnerIds.includes(friend.id) ? 'text-white' : 'text-secondary'
+                    }`}>
+                      {friend.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Quest Builder */}
@@ -465,11 +517,14 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
 
           <button 
             type="submit" 
-            disabled={!title.trim() || !partnerId || categories.length === 0}
+            disabled={!title.trim() || partnerIds.length === 0 || categories.length === 0}
             className="w-full bg-background hover:bg-background/80 disabled:opacity-30 disabled:grayscale text-white font-black uppercase tracking-widest py-4 px-4 rounded-xl transition-all border border-secondary/30 flex items-center justify-center gap-2"
           >
             <Swords size={18} />
-            {challengeType === 'coop' ? 'Deploy Mission' : 'Deploy Contract'}
+            {editingChallenge 
+              ? 'Update Contract' 
+              : (challengeType === 'coop' ? 'Deploy Mission' : 'Deploy Contract')
+            }
           </button>
         </form>
       </div>

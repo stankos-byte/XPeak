@@ -251,6 +251,7 @@ const App: React.FC = () => {
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isChallengeModalOpen, setIsChallengeModalOpen] = useState(false);
   const [challengeToDelete, setChallengeToDelete] = useState<string | null>(null);
+  const [editingChallenge, setEditingChallenge] = useState<FriendChallenge | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Habit Sync Logic
@@ -777,7 +778,20 @@ const App: React.FC = () => {
   };
   
   const handleManualCreateChallenge = (data: any) => {
-    const newChallenge: FriendChallenge = {
+    if (editingChallenge) {
+      // Update existing challenge
+      setChallenges(prev => prev.map(c => c.id === editingChallenge.id ? {
+        ...c,
+        title: data.title,
+        description: data.description || '',
+        partnerIds: data.partnerIds,
+        mode: data.mode || 'competitive',
+        categories: data.categories || []
+      } : c));
+      setEditingChallenge(null);
+    } else {
+      // Create new challenge
+      const newChallenge: FriendChallenge = {
         id: crypto.randomUUID(),
         title: data.title,
         description: data.description || '',
@@ -785,8 +799,14 @@ const App: React.FC = () => {
         mode: data.mode || 'competitive',
         categories: data.categories || [],
         timeLeft: '7d' // Default duration
-    };
-    setChallenges(prev => [...prev, newChallenge]);
+      };
+      setChallenges(prev => [...prev, newChallenge]);
+    }
+  };
+
+  const handleEditChallenge = (challenge: FriendChallenge) => {
+    setEditingChallenge(challenge);
+    setIsChallengeModalOpen(true);
   };
 
   // Handle challenge task completion
@@ -922,7 +942,7 @@ const App: React.FC = () => {
         {activeTab === 'dashboard' && <DashboardView user={user} tasks={tasks} handleCompleteTask={handleCompleteTask} handleUncompleteTask={handleUncompleteTask} handleDeleteTask={(id:any)=>setTasks(t=>t.filter(x=>x.id!==id))} handleEditTask={(t:any)=>{setEditingTask(t);setIsModalOpen(true);}} handleSaveTemplate={handleSaveTemplate} setIsModalOpen={setIsModalOpen} setEditingTask={setEditingTask} levelProgress={getLevelProgress(user.totalXP, user.level)} popups={xpPopups} flashKey={flashKey} />}
         {activeTab === 'quests' && <QuestsView mainQuests={mainQuests} expandedNodes={expandedNodes} toggleNode={toggleNode} setTextModalConfig={setTextModalConfig} setQuestTaskConfig={setQuestTaskConfig} handleToggleQuestTask={handleToggleQuestTask} handleQuestOracle={handleQuestOracle} oraclingQuestId={oraclingQuestId} handleDeleteQuest={handleDeleteQuest} handleDeleteCategory={handleDeleteCategory} handleDeleteQuestTask={handleDeleteQuestTask} handleSaveTemplate={handleSaveTemplate} popups={xpPopups} />}
         {activeTab === 'tools' && <ToolsView switchTimerMode={switchTimerMode} timerMode={timerMode} formatTime={(s:any)=>`${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`} timerTimeLeft={timerTimeLeft} toggleTimer={toggleTimer} isTimerActive={isTimerActive} resetTimer={resetTimer} handleAdjustTimer={handleAdjustTimer} />}
-        {activeTab === 'friends' && <FriendsView user={user} friends={friends} challenges={challenges} onCreateChallenge={() => setIsChallengeModalOpen(true)} onDeleteChallenge={(id) => setChallengeToDelete(id)} onToggleChallengeTask={handleToggleChallengeTask} />}
+        {activeTab === 'friends' && <FriendsView user={user} friends={friends} challenges={challenges} onCreateChallenge={() => setIsChallengeModalOpen(true)} onEditChallenge={handleEditChallenge} onDeleteChallenge={(id) => setChallengeToDelete(id)} onToggleChallengeTask={handleToggleChallengeTask} />}
         {activeTab === 'assistant' && <AssistantView user={user} tasks={tasks} quests={mainQuests} friends={friends} challenges={challenges} onAddTask={handleAiCreateTask} onAddQuest={handleAiCreateQuest} onAddChallenge={handleAiCreateChallenge} messages={aiMessages} setMessages={setAiMessages} />}
       </main>
 
@@ -1049,8 +1069,12 @@ const App: React.FC = () => {
       
       <CreateChallengeModal 
         isOpen={isChallengeModalOpen}
-        onClose={() => setIsChallengeModalOpen(false)}
+        onClose={() => {
+          setIsChallengeModalOpen(false);
+          setEditingChallenge(null);
+        }}
         friends={friends}
+        editingChallenge={editingChallenge}
         onSubmit={handleManualCreateChallenge}
       />
 

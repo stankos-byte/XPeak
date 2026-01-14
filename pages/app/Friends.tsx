@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, Friend, FriendChallenge } from '../../types';
-import { Zap, Users, Clock, Plus, Bell } from 'lucide-react';
+import { Zap, Users, Clock, Plus, Bell, ChevronDown, ChevronUp, Edit2, Trash2, Check } from 'lucide-react';
 import { calculateChallengeXP } from '../../utils/gamification';
 
 interface FriendsViewProps {
@@ -8,11 +8,29 @@ interface FriendsViewProps {
   friends: Friend[];
   challenges: FriendChallenge[];
   onCreateChallenge: () => void;
+  onEditChallenge: (challenge: FriendChallenge) => void;
   onDeleteChallenge: (id: string) => void;
   onToggleChallengeTask: (challengeId: string, categoryId: string, taskId: string) => void;
 }
 
-const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
+const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
+  const [expandedChallenges, setExpandedChallenges] = useState<Record<string, boolean>>({});
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
+
+  const toggleChallenge = (challengeId: string) => {
+    setExpandedChallenges(prev => ({
+      ...prev,
+      [challengeId]: !prev[challengeId]
+    }));
+  };
+
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [categoryId]: !prev[categoryId]
+    }));
+  };
+
   return (
     <div className="max-w-7xl mx-auto animate-in fade-in duration-500 pb-20">
       {/* Header */}
@@ -84,17 +102,40 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                   )}
                 </div>
 
-                {/* Participant Avatars */}
-                <div className="absolute right-6 top-6 flex items-center -space-x-2">
-                  {partners.slice(0, 3).map((partner, idx) => (
-                    <div
-                      key={idx}
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 border-[#1e2738]"
-                      style={{ backgroundColor: partner.color }}
-                    >
-                      {partner.name.charAt(0)}
-                    </div>
-                  ))}
+                {/* Participant Avatars and Action Buttons */}
+                <div className="absolute right-6 top-6 flex items-center gap-2">
+                  {/* Action Buttons */}
+                  <button
+                    onClick={() => onEditChallenge(challenge)}
+                    className="w-8 h-8 rounded-full bg-gray-700/50 hover:bg-blue-500/20 border border-gray-600 hover:border-blue-500 flex items-center justify-center transition-all group"
+                    title="Edit Challenge"
+                  >
+                    <Edit2 size={14} className="text-gray-400 group-hover:text-blue-400" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Delete challenge "${challenge.title}"?`)) {
+                        onDeleteChallenge(challenge.id);
+                      }
+                    }}
+                    className="w-8 h-8 rounded-full bg-gray-700/50 hover:bg-red-500/20 border border-gray-600 hover:border-red-500 flex items-center justify-center transition-all group"
+                    title="Delete Challenge"
+                  >
+                    <Trash2 size={14} className="text-gray-400 group-hover:text-red-400" />
+                  </button>
+                  
+                  {/* Partner Avatars */}
+                  <div className="flex items-center -space-x-2 ml-2">
+                    {partners.slice(0, 3).map((partner, idx) => (
+                      <div
+                        key={idx}
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 border-[#1e2738]"
+                        style={{ backgroundColor: partner.color }}
+                      >
+                        {partner.name.charAt(0)}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Content */}
@@ -153,6 +194,116 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                       </>
                     )}
                   </div>
+
+                  {/* Expand/Collapse Toggle */}
+                  <button
+                    onClick={() => toggleChallenge(challenge.id)}
+                    className="mt-4 w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-gray-700/30 hover:bg-gray-700/50 transition-colors group"
+                  >
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider group-hover:text-gray-300">
+                      {expandedChallenges[challenge.id] ? 'Hide Tasks' : 'Show Tasks'}
+                    </span>
+                    {expandedChallenges[challenge.id] ? (
+                      <ChevronUp size={16} className="text-gray-400 group-hover:text-gray-300" />
+                    ) : (
+                      <ChevronDown size={16} className="text-gray-400 group-hover:text-gray-300" />
+                    )}
+                  </button>
+
+                  {/* Expanded Categories and Tasks */}
+                  {expandedChallenges[challenge.id] && (
+                    <div className="mt-4 space-y-3 border-t border-gray-700 pt-4">
+                      {challenge.categories.map((category) => {
+                        const categoryKey = `${challenge.id}-${category.id}`;
+                        return (
+                          <div key={category.id} className="space-y-2">
+                            {/* Category Header */}
+                            <button
+                              onClick={() => toggleCategory(categoryKey)}
+                              className="w-full flex items-center justify-between py-2 px-3 rounded-lg bg-gray-700/20 hover:bg-gray-700/30 transition-colors"
+                            >
+                              <span className="text-sm font-bold text-white uppercase">
+                                {category.title}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">
+                                  {category.tasks.filter(t => 
+                                    isCoop ? t.status === 'completed' : t.myStatus === 'completed'
+                                  ).length} / {category.tasks.length}
+                                </span>
+                                {expandedCategories[categoryKey] ? (
+                                  <ChevronUp size={16} className="text-gray-400" />
+                                ) : (
+                                  <ChevronDown size={16} className="text-gray-400" />
+                                )}
+                              </div>
+                            </button>
+
+                            {/* Tasks List */}
+                            {expandedCategories[categoryKey] && (
+                              <div className="space-y-2 pl-3">
+                                {category.tasks.map((task) => {
+                                  const isCompleted = isCoop 
+                                    ? task.status === 'completed'
+                                    : task.myStatus === 'completed';
+                                  const opponentCompleted = !isCoop && task.opponentStatus === 'completed';
+                                  
+                                  return (
+                                    <div
+                                      key={task.task_id}
+                                      className="flex items-center gap-3 py-2 px-3 rounded-lg bg-[#0f1419] hover:bg-[#1a1f2e] transition-colors group"
+                                    >
+                                      {/* Checkbox */}
+                                      <button
+                                        onClick={() => onToggleChallengeTask(challenge.id, category.id, task.task_id)}
+                                        className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                                          isCompleted
+                                            ? isCoop
+                                              ? 'bg-emerald-500 border-emerald-500'
+                                              : 'bg-blue-500 border-blue-500'
+                                            : 'border-gray-600 hover:border-gray-500'
+                                        }`}
+                                      >
+                                        {isCompleted && <Check size={14} className="text-white" />}
+                                      </button>
+                                      
+                                      {/* Task Name */}
+                                      <span className={`flex-1 text-sm ${
+                                        isCompleted ? 'text-gray-500 line-through' : 'text-gray-300'
+                                      }`}>
+                                        {task.name}
+                                      </span>
+
+                                      {/* Opponent Status (Competitive mode only) */}
+                                      {!isCoop && (
+                                        <div className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                          opponentCompleted
+                                            ? 'bg-red-500 border-red-500'
+                                            : 'border-gray-700'
+                                        }`}>
+                                          {opponentCompleted && <Check size={14} className="text-white" />}
+                                        </div>
+                                      )}
+
+                                      {/* Difficulty Badge */}
+                                      <span className={`flex-shrink-0 text-xs px-2 py-0.5 rounded font-bold ${
+                                        task.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
+                                        task.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                                        task.difficulty === 'Hard' ? 'bg-orange-500/20 text-orange-400' :
+                                        'bg-purple-500/20 text-purple-400'
+                                      }`}>
+                                        {task.difficulty}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             );
