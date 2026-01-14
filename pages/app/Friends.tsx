@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, Friend, FriendChallenge } from '../../types';
-import { Swords, Users, MessageSquare, Clock, Trash2, Plus, UserPlus, ShieldAlert, Search } from 'lucide-react';
+import { Swords, Users, MessageSquare, Clock, Trash2, Plus, UserPlus, ShieldAlert, Search, Trophy, CheckCircle2, Circle } from 'lucide-react';
+import { calculateChallengeXP } from '../../utils/gamification';
 
 interface FriendsViewProps {
   user: UserProfile;
@@ -8,9 +9,10 @@ interface FriendsViewProps {
   challenges: FriendChallenge[];
   onCreateChallenge: () => void;
   onDeleteChallenge: (id: string) => void;
+  onToggleChallengeTask: (challengeId: string, categoryId: string, taskId: string) => void;
 }
 
-const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onDeleteChallenge }) => {
+const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
   const [activeTab, setActiveTab] = useState<'network' | 'challenges'>('network');
 
   return (
@@ -101,25 +103,76 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
            {challenges.map(challenge => {
-             const opponent = friends.find(f => f.id === challenge.opponentId);
-             const myPercent = Math.min(100, (challenge.myProgress / challenge.targetValue) * 100);
-             const oppPercent = Math.min(100, (challenge.opponentProgress / challenge.targetValue) * 100);
-             const isWinning = challenge.myProgress > challenge.opponentProgress;
+             const partner = friends.find(f => f.id === challenge.partnerId);
+             const isCoop = challenge.mode === 'coop';
+             
+             // Calculate progress based on completed tasks
+             const totalTasks = challenge.categories.reduce((sum, cat) => sum + cat.tasks.length, 0);
+             
+             let myCompletedTasks = 0;
+             let partnerCompletedTasks = 0;
+             
+             if (isCoop) {
+               // In co-op, count completed tasks (status === 'completed')
+               const completedTasks = challenge.categories.reduce((sum, cat) => 
+                 sum + cat.tasks.filter(t => t.status === 'completed').length, 0
+               );
+               myCompletedTasks = completedTasks;
+               partnerCompletedTasks = completedTasks;
+             } else {
+               // In competitive, count separately
+               myCompletedTasks = challenge.categories.reduce((sum, cat) => 
+                 sum + cat.tasks.filter(t => t.myStatus === 'completed').length, 0
+               );
+               partnerCompletedTasks = challenge.categories.reduce((sum, cat) => 
+                 sum + cat.tasks.filter(t => t.opponentStatus === 'completed').length, 0
+               );
+             }
+             
+             const myPercent = totalTasks > 0 ? (myCompletedTasks / totalTasks) * 100 : 0;
+             const partnerPercent = totalTasks > 0 ? (partnerCompletedTasks / totalTasks) * 100 : 0;
+             const isWinning = myCompletedTasks > partnerCompletedTasks;
+             
+             // Calculate dynamic XP
+             const challengeXP = calculateChallengeXP(challenge);
+             const isCompleted = !!challenge.completedBy;
+             const iWon = challenge.completedBy === user.name || challenge.completedBy === 'Protocol-01';
+             const partnerWon = challenge.completedBy === partner?.name;
 
              return (
                <div key={challenge.id} className="bg-surface border border-secondary/20 rounded-2xl p-6 relative overflow-hidden group hover:border-primary/40 transition-all">
                   <div className="flex justify-between items-start mb-4 relative z-10">
                      <div>
                         <div className="flex items-center gap-2 mb-1">
-                           <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded">PvP Contract</span>
+                           {isCoop ? (
+                             <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded">Co-op Mission</span>
+                           ) : (
+                             <span className="bg-red-500/10 text-red-400 border border-red-500/20 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded">PvP Contract</span>
+                           )}
                            <span className="text-secondary text-[10px] font-bold flex items-center gap-1"><Clock size={10} /> {challenge.timeLeft || 'Ongoing'}</span>
                         </div>
                         <h3 className="text-lg md:text-xl font-black text-white italic uppercase tracking-tighter">{challenge.title}</h3>
                      </div>
                      <div className="flex items-start gap-3">
                         <div className="text-right">
-                            <div className="text-xl md:text-2xl font-black text-primary drop-shadow-[0_0_10px_rgba(0,225,255,0.4)]">{challenge.rewardXP} XP</div>
-                            <div className="text-[9px] text-secondary font-black uppercase tracking-widest">Bounty</div>
+                            {isCompleted ? (
+                              <div className="flex flex-col items-end">
+                                <div className={`text-xl md:text-2xl font-black ${isCoop || iWon ? 'text-primary' : 'text-red-400'} drop-shadow-[0_0_10px_rgba(0,225,255,0.4)] flex items-center gap-2`}>
+                                  {isCoop || iWon ? <Trophy size={24} /> : <CheckCircle2 size={24} />}
+                                  {isCoop || iWon ? `+${challengeXP}` : '0'} XP
+                                </div>
+                                <div className="text-[9px] text-secondary font-black uppercase tracking-widest">
+                                  {isCoop ? 'Completed!' : (iWon ? 'Victory!' : 'Defeated')}
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="text-xl md:text-2xl font-black text-primary drop-shadow-[0_0_10px_rgba(0,225,255,0.4)]">{challengeXP} XP</div>
+                                <div className="text-[9px] text-secondary font-black uppercase tracking-widest">
+                                  {isCoop ? 'Team Reward' : 'Winner Takes All'}
+                                </div>
+                              </>
+                            )}
                         </div>
                         <button 
                             onClick={(e) => {
@@ -136,30 +189,142 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                   
                   <p className="text-secondary text-sm mb-6 relative z-10">{challenge.description}</p>
                   
-                  <div className="space-y-6 relative z-10 bg-background/40 p-4 rounded-xl border border-secondary/10">
-                     {/* My Progress */}
-                     <div>
-                        <div className="flex justify-between items-end mb-1">
-                           <span className="text-xs font-black text-primary uppercase tracking-wider">You (Protocol-01)</span>
-                           <span className="text-xs font-bold text-white">{Math.floor(challenge.myProgress)} / {challenge.targetValue} {challenge.metric}</span>
-                        </div>
-                        <div className="h-2 bg-background rounded-full overflow-hidden border border-secondary/20">
-                           <div className="h-full bg-primary transition-all duration-1000" style={{ width: `${myPercent}%` }}></div>
-                        </div>
+                  <div className="space-y-4 relative z-10">
+                     {/* Overall Progress */}
+                     <div className="bg-background/40 p-4 rounded-xl border border-secondary/10 space-y-4">
+                        {isCoop ? (
+                           // Co-op: Show unified progress
+                           <div>
+                              <div className="flex justify-between items-end mb-1">
+                                 <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">Team Progress</span>
+                                 <span className="text-xs font-bold text-white">{myCompletedTasks} / {totalTasks} Tasks</span>
+                              </div>
+                              <div className="h-2 bg-background rounded-full overflow-hidden border border-secondary/20">
+                                 <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: `${myPercent}%` }}></div>
+                              </div>
+                           </div>
+                        ) : (
+                           // Competitive: Show separate progress bars
+                           <>
+                              {/* My Progress */}
+                              <div>
+                                 <div className="flex justify-between items-end mb-1">
+                                    <span className="text-xs font-black text-primary uppercase tracking-wider">You (Protocol-01)</span>
+                                    <span className="text-xs font-bold text-white">{myCompletedTasks} / {totalTasks} Tasks</span>
+                                 </div>
+                                 <div className="h-2 bg-background rounded-full overflow-hidden border border-secondary/20">
+                                    <div className="h-full bg-primary transition-all duration-1000" style={{ width: `${myPercent}%` }}></div>
+                                 </div>
+                              </div>
+
+                              {/* Opponent Progress */}
+                              {partner && (
+                                 <div>
+                                    <div className="flex justify-between items-end mb-1">
+                                       <span className={`text-xs font-black uppercase tracking-wider ${isWinning ? 'text-secondary' : 'text-red-400'}`}>{partner.name}</span>
+                                       <span className="text-xs font-bold text-gray-400">{partnerCompletedTasks} / {totalTasks} Tasks</span>
+                                    </div>
+                                    <div className="h-2 bg-background rounded-full overflow-hidden border border-secondary/20">
+                                       <div className={`h-full transition-all duration-1000 ${isWinning ? 'bg-secondary' : 'bg-red-500'}`} style={{ width: `${partnerPercent}%` }}></div>
+                                    </div>
+                                 </div>
+                              )}
+                           </>
+                        )}
                      </div>
 
-                     {/* Opponent Progress */}
-                     {opponent && (
-                        <div>
-                           <div className="flex justify-between items-end mb-1">
-                              <span className={`text-xs font-black uppercase tracking-wider ${isWinning ? 'text-secondary' : 'text-red-400'}`}>{opponent.name}</span>
-                              <span className="text-xs font-bold text-gray-400">{Math.floor(challenge.opponentProgress)} / {challenge.targetValue} {challenge.metric}</span>
-                           </div>
-                           <div className="h-2 bg-background rounded-full overflow-hidden border border-secondary/20">
-                              <div className={`h-full transition-all duration-1000 ${isWinning ? 'bg-secondary' : 'bg-red-500'}`} style={{ width: `${oppPercent}%` }}></div>
-                           </div>
-                        </div>
-                     )}
+                     {/* Quest Sections */}
+                     <div className="space-y-3">
+                        {challenge.categories.map((category) => {
+                           let myCatCompleted, partnerCatCompleted;
+                           
+                           if (isCoop) {
+                              const completedTasks = category.tasks.filter(t => t.status === 'completed').length;
+                              myCatCompleted = completedTasks;
+                              partnerCatCompleted = completedTasks;
+                           } else {
+                              myCatCompleted = category.tasks.filter(t => t.myStatus === 'completed').length;
+                              partnerCatCompleted = category.tasks.filter(t => t.opponentStatus === 'completed').length;
+                           }
+                           
+                           return (
+                              <div key={category.id} className="bg-background/60 border border-secondary/10 rounded-lg p-3">
+                                 <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-sm font-black text-primary uppercase tracking-wider">{category.title}</h4>
+                                    {isCoop ? (
+                                       <div className="flex items-center gap-2 text-xs font-bold">
+                                          <span className="text-emerald-400">{myCatCompleted}/{category.tasks.length}</span>
+                                       </div>
+                                    ) : (
+                                       <div className="flex items-center gap-2 text-xs font-bold">
+                                          <span className="text-primary">{myCatCompleted}/{category.tasks.length}</span>
+                                          <span className="text-secondary">vs</span>
+                                          <span className={partnerCatCompleted > myCatCompleted ? 'text-red-400' : 'text-secondary'}>{partnerCatCompleted}/{category.tasks.length}</span>
+                                       </div>
+                                    )}
+                                 </div>
+                                 
+                                 <div className="space-y-2">
+                                    {category.tasks.map((task) => (
+                                       <div 
+                                          key={task.task_id} 
+                                          className={`bg-surface/50 border rounded-lg p-3 flex items-start gap-3 transition-all ${
+                                             isCompleted 
+                                                ? 'border-secondary/10 opacity-60' 
+                                                : 'border-secondary/10 hover:border-primary/30 hover:bg-surface'
+                                          }`}
+                                       >
+                                          {/* Checkbox Button */}
+                                          <button
+                                             onClick={() => !isCompleted && onToggleChallengeTask(challenge.id, category.id, task.task_id)}
+                                             disabled={isCompleted}
+                                             className={`flex-shrink-0 mt-0.5 transition-colors focus:outline-none ${
+                                                (isCoop ? task.status === 'completed' : task.myStatus === 'completed')
+                                                   ? 'text-emerald-500 hover:text-red-400' 
+                                                   : 'text-secondary hover:text-primary'
+                                             } ${isCompleted ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                                             title={(isCoop ? task.status === 'completed' : task.myStatus === 'completed') ? "Undo completion" : "Complete task"}
+                                          >
+                                             {(isCoop ? task.status === 'completed' : task.myStatus === 'completed') ? (
+                                                <CheckCircle2 size={20} />
+                                             ) : (
+                                                <Circle size={20} />
+                                             )}
+                                          </button>
+                                             
+                                          <div className="flex-1">
+                                             <div className={`text-sm font-medium ${(isCoop ? task.status === 'completed' : task.myStatus === 'completed') ? 'text-gray-400 line-through' : 'text-gray-200'}`}>
+                                                {task.name}
+                                             </div>
+                                             <div className="flex gap-1 mt-1.5">
+                                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-primary/20 text-primary">{task.difficulty}</span>
+                                                <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary/20 text-secondary">{task.skillCategory}</span>
+                                             </div>
+                                          </div>
+                                          
+                                          {/* Partner/Opponent status indicator */}
+                                          {!isCoop && (
+                                             <div className="flex items-center ml-2">
+                                                <div 
+                                                   className={`w-2.5 h-2.5 rounded-full ${task.opponentStatus === 'completed' ? 'bg-red-400' : 'bg-secondary/30'}`} 
+                                                   title={task.opponentStatus === 'completed' ? 'Opponent completed' : 'Opponent not completed'}
+                                                ></div>
+                                             </div>
+                                          )}
+                                          {isCoop && task.status === 'completed' && task.completedBy && (
+                                             <div className="flex items-center ml-2">
+                                                <span className="text-[9px] text-secondary">
+                                                   by {task.completedBy === user.name ? 'you' : partner?.name}
+                                                </span>
+                                             </div>
+                                          )}
+                                       </div>
+                                    ))}
+                                 </div>
+                              </div>
+                           );
+                        })}
+                     </div>
                   </div>
 
                   <div className="mt-4"></div>

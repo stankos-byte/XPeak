@@ -1,4 +1,4 @@
-import { Task, XPResult, Difficulty } from '../types';
+import { Task, XPResult, Difficulty, FriendChallenge, ChallengeQuestTask } from '../types';
 import { BASE_XP, DIFFICULTY_MULTIPLIERS } from '../constants';
 
 /**
@@ -80,4 +80,107 @@ export const getLevelProgress = (totalXP: number, currentLevel: number) => {
     max: nextLevelThresholdXP,
     percentage: progressPercentage
   };
+};
+
+/**
+ * Calculates XP for a single challenge task based on difficulty.
+ * Easy=10, Medium=15, Hard=20, Epic=30
+ */
+const getTaskXP = (difficulty: Difficulty): number => {
+  switch (difficulty) {
+    case Difficulty.EASY:
+      return 10;
+    case Difficulty.MEDIUM:
+      return 15;
+    case Difficulty.HARD:
+      return 20;
+    case Difficulty.EPIC:
+      return 30;
+    default:
+      return 10;
+  }
+};
+
+/**
+ * Calculates completion bonus based on total task count.
+ * 0-5 tasks: +35 XP
+ * 6-10 tasks: +75 XP
+ * 11+ tasks: +110 XP
+ */
+const getCompletionBonus = (taskCount: number): number => {
+  if (taskCount <= 5) return 35;
+  if (taskCount <= 10) return 75;
+  return 110;
+};
+
+/**
+ * Calculates total XP for a competitive challenge (winner-takes-all).
+ * Sum of all task XP + completion bonus based on task count.
+ */
+export const calculateCompetitiveXP = (challenge: FriendChallenge): number => {
+  // Sum all task XP
+  let totalTaskXP = 0;
+  let totalTasks = 0;
+  
+  challenge.categories.forEach(category => {
+    category.tasks.forEach(task => {
+      totalTaskXP += getTaskXP(task.difficulty);
+      totalTasks++;
+    });
+  });
+  
+  // Add completion bonus for competitive mode
+  const completionBonus = getCompletionBonus(totalTasks);
+  
+  return totalTaskXP + completionBonus;
+};
+
+/**
+ * Calculates total XP for a co-op mission (no bonus).
+ * Sum of all task XP only.
+ */
+export const calculateCoopXP = (challenge: FriendChallenge): number => {
+  let totalTaskXP = 0;
+  
+  challenge.categories.forEach(category => {
+    category.tasks.forEach(task => {
+      totalTaskXP += getTaskXP(task.difficulty);
+    });
+  });
+  
+  return totalTaskXP; // No completion bonus for co-op
+};
+
+/**
+ * Calculates total XP for any challenge based on its mode.
+ */
+export const calculateChallengeXP = (challenge: FriendChallenge): number => {
+  if (challenge.mode === 'coop') {
+    return calculateCoopXP(challenge);
+  }
+  return calculateCompetitiveXP(challenge);
+};
+
+/**
+ * Gets skill XP breakdown for a specific user in a co-op mission.
+ * Only counts XP from tasks they personally completed.
+ */
+export const calculateUserSkillXP = (
+  challenge: FriendChallenge,
+  userId: string
+): Record<string, number> => {
+  const skillXP: Record<string, number> = {};
+  
+  challenge.categories.forEach(category => {
+    category.tasks.forEach(task => {
+      // Only count tasks completed by this user
+      if (task.completedBy === userId && task.status === 'completed') {
+        const xp = getTaskXP(task.difficulty);
+        const category = task.skillCategory;
+        skillXP[category] = (skillXP[category] || 0) + xp;
+      }
+    });
+  });
+  
+  return skillXP;
 };

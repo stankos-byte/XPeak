@@ -156,18 +156,40 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
 
   const createChallengeTool: FunctionDeclaration = {
     name: "create_challenge",
-    description: "Create a competitive challenge against a friend/operative.",
+    description: "Create a competitive challenge against a friend/operative. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' (steps) for the challenge. Example: For a fitness challenge, create categories like 'Week 1: Warmup', 'Week 2: Intensity', each with multiple specific tasks like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without tasks!",
     parameters: {
       type: Type.OBJECT,
       properties: {
         title: { type: Type.STRING, description: "Name of the challenge" },
         description: { type: Type.STRING, description: "Terms of the challenge" },
         opponentName: { type: Type.STRING, description: "Name of the friend to challenge (must match a friend in the list)" },
-        metric: { type: Type.STRING, enum: ['XP', 'Tasks', 'Streak'], description: "The metric to track" },
-        targetValue: { type: Type.NUMBER, description: "The target number to reach" },
-        rewardXP: { type: Type.NUMBER, description: "XP reward for winning" }
+        categories: {
+            type: Type.ARRAY,
+            description: "Detailed breakdown of the challenge into phases/sections with tasks",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING, description: "Phase title (e.g., 'Week 1: Fundamentals')" },
+                    tasks: {
+                        type: Type.ARRAY,
+                        description: "Actionable tasks for this phase that both you and your opponent will complete",
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                name: { type: Type.STRING, description: "Actionable task name" },
+                                difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
+                                skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) },
+                                description: { type: Type.STRING, description: "Short description/context" }
+                            },
+                            required: ["name", "difficulty", "skillCategory"]
+                        }
+                    }
+                },
+                required: ["title", "tasks"]
+            }
+        }
       },
-      required: ["title", "opponentName", "metric", "targetValue", "rewardXP"]
+      required: ["title", "opponentName", "categories"]
     }
   };
 
@@ -203,7 +225,12 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
         1. **GENERAL INQUIRY / CHAT**: If the user asks a question, seeks advice, or chats (e.g., "How do I get fit?", "What is XP?", "Suggest some habits"), JUST REPLY with text. DO NOT use any tools.
         2. **SINGLE TASK**: ONLY if the user explicitly COMMANDS to add an item (e.g., "Add a task to...", "Remind me to...", "Create a habit..."), use 'create_task'.
         3. **COMPLEX QUEST**: ONLY if the user COMMANDS to start a large project (e.g., "Start a quest to...", "I want to build a...", "Plan a..."), use 'create_quest'. You MUST generate a full breakdown of categories and tasks for the quest.
-        4. **COMPETITION**: Use 'create_challenge' only for explicit PvP requests.
+        4. **COMPETITION**: Use 'create_challenge' ONLY for explicit PvP requests (e.g., "Challenge [friend] to...", "Create a challenge against..."). 
+           CRITICAL: You MUST ALWAYS generate a detailed breakdown with:
+           - Multiple categories (at least 2-3 phases/sections)
+           - Multiple tasks per category (at least 3-5 tasks per section)
+           - Each task must have: name, difficulty, skillCategory, and optional description
+           - Think of creative, competitive tasks that both players can complete
 
         Gamify everything.
       `;
@@ -242,8 +269,31 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                     const args = call.args as any;
                     const opponent = friends.find(f => f.name.toLowerCase().includes(args.opponentName.toLowerCase()));
                     if (opponent) {
-                        onAddChallenge({ ...args, opponentId: opponent.id });
-                        result.message = `Challenge contract deployed against ${opponent.name}.`;
+                        // Transform AI-generated categories to proper format with task IDs and status
+                        const formattedCategories = (args.categories || []).map((cat: any, catIndex: number) => ({
+                            id: `cat-${Date.now()}-${catIndex}`,
+                            title: cat.title,
+                            tasks: (cat.tasks || []).map((task: any, taskIndex: number) => ({
+                                task_id: `task-${Date.now()}-${catIndex}-${taskIndex}`,
+                                name: task.name,
+                                myStatus: 'pending' as const,
+                                opponentStatus: 'pending' as const,
+                                difficulty: task.difficulty,
+                                skillCategory: task.skillCategory,
+                                description: task.description
+                            }))
+                        }));
+                        
+                        console.log('Creating challenge with categories:', formattedCategories);
+                        
+                        onAddChallenge({ 
+                            title: args.title,
+                            description: args.description || '',
+                            opponentId: opponent.id,
+                            categories: formattedCategories
+                        });
+                        const taskCount = formattedCategories.reduce((sum: number, cat: any) => sum + (cat.tasks?.length || 0), 0);
+                        result.message = `Challenge contract "${args.title}" deployed against ${opponent.name} with ${taskCount} tasks across ${formattedCategories.length} phases.`;
                     } else {
                          result = { status: 'error', message: `Target operative "${args.opponentName}" not found in network.` };
                     }

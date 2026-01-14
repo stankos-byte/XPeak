@@ -16,7 +16,7 @@ import {
   FriendChallenge,
   ChatMessage
 } from './types';
-import { calculateXP, calculateLevel, getLevelProgress, getXPRequirement } from './utils/gamification';
+import { calculateXP, calculateLevel, getLevelProgress, getXPRequirement, calculateChallengeXP } from './utils/gamification';
 import CreateTaskModal from './components/modals/CreateTaskModal';
 import SimpleInputModal from './components/modals/SimpleInputModal';
 import DeleteConfirmModal from './components/modals/DeleteConfirmModal';
@@ -167,8 +167,51 @@ const INITIAL_FRIENDS: Friend[] = [
 ];
 
 const INITIAL_CHALLENGES: FriendChallenge[] = [
-  { id: 'c1', title: 'Sprint to Level 13', description: 'First operative to reach Level 13 secures the bounty.', opponentId: '1', metric: 'XP', targetValue: 5000, myProgress: 3950, opponentProgress: 4500, rewardXP: 500, timeLeft: '2d 4h' },
-  { id: 'c2', title: 'Deep Work Protocol', description: 'Maintain focus streak. Highest habit completion count wins.', opponentId: '2', metric: 'Tasks', targetValue: 20, myProgress: 12, opponentProgress: 8, rewardXP: 250, timeLeft: '18h' },
+  { 
+    id: 'c1', 
+    title: 'Sprint to Level 13', 
+    description: 'First operative to reach Level 13 secures the bounty.', 
+    partnerId: '1',
+    mode: 'competitive',
+    categories: [
+      {
+        id: 'cat1',
+        title: 'Week 1 - Foundation',
+        tasks: [
+          { task_id: 't1', name: '30min morning workout', myStatus: 'completed', opponentStatus: 'completed', difficulty: Difficulty.EASY, skillCategory: SkillCategory.PHYSICAL },
+          { task_id: 't2', name: 'Read 20 pages', myStatus: 'completed', opponentStatus: 'in-progress', difficulty: Difficulty.EASY, skillCategory: SkillCategory.MENTAL },
+          { task_id: 't3', name: 'Complete coding challenge', myStatus: 'in-progress', opponentStatus: 'pending', difficulty: Difficulty.MEDIUM, skillCategory: SkillCategory.PROFESSIONAL },
+        ]
+      },
+      {
+        id: 'cat2',
+        title: 'Week 2 - Intensity',
+        tasks: [
+          { task_id: 't4', name: '45min cardio session', myStatus: 'pending', opponentStatus: 'pending', difficulty: Difficulty.MEDIUM, skillCategory: SkillCategory.PHYSICAL },
+          { task_id: 't5', name: 'Learn new programming concept', myStatus: 'pending', opponentStatus: 'pending', difficulty: Difficulty.HARD, skillCategory: SkillCategory.PROFESSIONAL },
+        ]
+      }
+    ],
+    timeLeft: '2d 4h' 
+  },
+  { 
+    id: 'c2', 
+    title: 'Deep Work Protocol', 
+    description: 'Work together to complete all productivity tasks.', 
+    partnerId: '2',
+    mode: 'coop',
+    categories: [
+      {
+        id: 'cat3',
+        title: 'Daily Rituals',
+        tasks: [
+          { task_id: 't6', name: 'Morning meditation 10min', status: 'completed', completedBy: 'Protocol-01', difficulty: Difficulty.EASY, skillCategory: SkillCategory.MENTAL },
+          { task_id: 't7', name: 'Journal 5 min', status: 'pending', difficulty: Difficulty.EASY, skillCategory: SkillCategory.CREATIVE },
+        ]
+      }
+    ],
+    timeLeft: '18h' 
+  },
 ];
 
 // --- App Component ---
@@ -726,12 +769,9 @@ const App: React.FC = () => {
       id: crypto.randomUUID(),
       title: challenge.title || 'New Challenge',
       description: challenge.description || 'Defeat your opponent.',
-      opponentId: challenge.opponentId || '1',
-      metric: challenge.metric || 'XP',
-      targetValue: challenge.targetValue || 100,
-      myProgress: 0,
-      opponentProgress: 0,
-      rewardXP: challenge.rewardXP || 100,
+      partnerId: challenge.partnerId || '1',
+      mode: challenge.mode || 'competitive',
+      categories: challenge.categories || [],
       timeLeft: '7d'
     }]);
   };
@@ -740,16 +780,101 @@ const App: React.FC = () => {
     const newChallenge: FriendChallenge = {
         id: crypto.randomUUID(),
         title: data.title,
-        description: data.description,
-        opponentId: data.opponentId,
-        metric: data.metric,
-        targetValue: data.targetValue,
-        myProgress: 0,
-        opponentProgress: 0,
-        rewardXP: data.rewardXP,
+        description: data.description || '',
+        partnerId: data.partnerId,
+        mode: data.mode || 'competitive',
+        categories: data.categories || [],
         timeLeft: '7d' // Default duration
     };
     setChallenges(prev => [...prev, newChallenge]);
+  };
+
+  // Handle challenge task completion
+  const handleToggleChallengeTask = (challengeId: string, categoryId: string, taskId: string) => {
+    setChallenges(prev => prev.map(challenge => {
+      if (challenge.id !== challengeId) return challenge;
+      if (challenge.completedBy) return challenge; // Already completed, no changes
+
+      const isCoop = challenge.mode === 'coop';
+
+      // Toggle the task status based on mode
+      const updatedCategories = challenge.categories.map(cat => {
+        if (cat.id !== categoryId) return cat;
+        return {
+          ...cat,
+          tasks: cat.tasks.map(task => {
+            if (task.task_id !== taskId) return task;
+            
+            if (isCoop) {
+              // Co-op: toggle unified status and track who completed it
+              const newStatus = task.status === 'completed' ? 'pending' : 'completed';
+              return { 
+                ...task, 
+                status: newStatus,
+                completedBy: newStatus === 'completed' ? user.name : undefined
+              };
+            } else {
+              // Competitive: toggle myStatus only
+              const newStatus = task.myStatus === 'completed' ? 'pending' : 'completed';
+              return { ...task, myStatus: newStatus };
+            }
+          })
+        };
+      });
+
+      const updatedChallenge = { ...challenge, categories: updatedCategories };
+
+      // Check if all tasks are now completed
+      const allTasksCompleted = isCoop
+        ? updatedCategories.every(cat => cat.tasks.every(task => task.status === 'completed'))
+        : updatedCategories.every(cat => cat.tasks.every(task => task.myStatus === 'completed'));
+
+      // If all tasks completed, award XP and mark challenge as complete
+      if (allTasksCompleted && !challenge.completedBy) {
+        const challengeXP = calculateChallengeXP(updatedChallenge);
+        
+        if (isCoop) {
+          // Co-op: Award total XP to user
+          applyGlobalXPChange(challengeXP, `challenge-${challengeId}`, { [`challenge-${challengeId}`]: challengeXP });
+          
+          // Award skill XP only for tasks completed by this user
+          updatedCategories.forEach(cat => {
+            cat.tasks.forEach(task => {
+              if (task.completedBy === user.name && task.status === 'completed') {
+                const taskXP = calculateXP({ difficulty: task.difficulty } as any).total;
+                const skill = user.skills[task.skillCategory];
+                if (skill) {
+                  const newSkillXP = skill.xp + taskXP;
+                  setUser(prev => ({
+                    ...prev,
+                    skills: {
+                      ...prev.skills,
+                      [task.skillCategory]: {
+                        ...skill,
+                        xp: newSkillXP,
+                        level: calculateLevel(newSkillXP)
+                      }
+                    }
+                  }));
+                }
+              }
+            });
+          });
+        } else {
+          // Competitive: Award all XP (total + skill) to winner
+          applyGlobalXPChange(challengeXP, `challenge-${challengeId}`, { [`challenge-${challengeId}`]: challengeXP });
+        }
+        
+        // Mark challenge as complete
+        return {
+          ...updatedChallenge,
+          completedBy: user.name,
+          completedAt: new Date().toISOString()
+        };
+      }
+
+      return updatedChallenge;
+    }));
   };
 
   const navItems = [
@@ -797,7 +922,7 @@ const App: React.FC = () => {
         {activeTab === 'dashboard' && <DashboardView user={user} tasks={tasks} handleCompleteTask={handleCompleteTask} handleUncompleteTask={handleUncompleteTask} handleDeleteTask={(id:any)=>setTasks(t=>t.filter(x=>x.id!==id))} handleEditTask={(t:any)=>{setEditingTask(t);setIsModalOpen(true);}} handleSaveTemplate={handleSaveTemplate} setIsModalOpen={setIsModalOpen} setEditingTask={setEditingTask} levelProgress={getLevelProgress(user.totalXP, user.level)} popups={xpPopups} flashKey={flashKey} />}
         {activeTab === 'quests' && <QuestsView mainQuests={mainQuests} expandedNodes={expandedNodes} toggleNode={toggleNode} setTextModalConfig={setTextModalConfig} setQuestTaskConfig={setQuestTaskConfig} handleToggleQuestTask={handleToggleQuestTask} handleQuestOracle={handleQuestOracle} oraclingQuestId={oraclingQuestId} handleDeleteQuest={handleDeleteQuest} handleDeleteCategory={handleDeleteCategory} handleDeleteQuestTask={handleDeleteQuestTask} handleSaveTemplate={handleSaveTemplate} popups={xpPopups} />}
         {activeTab === 'tools' && <ToolsView switchTimerMode={switchTimerMode} timerMode={timerMode} formatTime={(s:any)=>`${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`} timerTimeLeft={timerTimeLeft} toggleTimer={toggleTimer} isTimerActive={isTimerActive} resetTimer={resetTimer} handleAdjustTimer={handleAdjustTimer} />}
-        {activeTab === 'friends' && <FriendsView user={user} friends={friends} challenges={challenges} onCreateChallenge={() => setIsChallengeModalOpen(true)} onDeleteChallenge={(id) => setChallengeToDelete(id)} />}
+        {activeTab === 'friends' && <FriendsView user={user} friends={friends} challenges={challenges} onCreateChallenge={() => setIsChallengeModalOpen(true)} onDeleteChallenge={(id) => setChallengeToDelete(id)} onToggleChallengeTask={handleToggleChallengeTask} />}
         {activeTab === 'assistant' && <AssistantView user={user} tasks={tasks} quests={mainQuests} friends={friends} challenges={challenges} onAddTask={handleAiCreateTask} onAddQuest={handleAiCreateQuest} onAddChallenge={handleAiCreateChallenge} messages={aiMessages} setMessages={setAiMessages} />}
       </main>
 

@@ -119,17 +119,38 @@ export interface Friend {
   color: string;
 }
 
+export type ChallengeModeType = 'competitive' | 'coop';
+
+export interface ChallengeQuestTask {
+  task_id: string;
+  name: string;
+  // For competitive mode: separate status tracking
+  myStatus?: 'completed' | 'pending' | 'in-progress';
+  opponentStatus?: 'completed' | 'pending' | 'in-progress';
+  // For coop mode: unified status and who completed it
+  status?: 'completed' | 'pending' | 'in-progress';
+  completedBy?: string; // User ID who completed (for coop tracking)
+  difficulty: Difficulty;
+  skillCategory: SkillCategory;
+  description?: string;
+}
+
+export interface ChallengeQuestCategory {
+  id: string;
+  title: string;
+  tasks: ChallengeQuestTask[];
+}
+
 export interface FriendChallenge {
   id: string;
   title: string;
   description: string;
-  opponentId: string;
-  metric: 'XP' | 'Tasks' | 'Streak';
-  targetValue: number;
-  myProgress: number;
-  opponentProgress: number;
-  rewardXP: number;
+  partnerId: string; // Renamed from opponentId to be mode-agnostic
+  categories: ChallengeQuestCategory[];
+  mode: ChallengeModeType;
   timeLeft: string;
+  completedBy?: string; // For competitive: winner ID; For coop: tracks when mission completes
+  completedAt?: string;
 }
 
 export interface ChatMessage {

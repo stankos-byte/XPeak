@@ -17,11 +17,11 @@
         theme: {
           extend: {
             colors: {
-              background: '#181919',
-              surface: '#242526',
-              primary: '#00E1FF',
-              secondary: '#505353',
-              accent: '#00E1FF',
+              background: '#0f172a',
+              surface: '#1e293b',
+              primary: '#3b82f6',
+              secondary: '#64748b',
+              accent: '#3b82f6',
             },
             animation: {
               'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
@@ -46,7 +46,7 @@
     </script>
     <style>
       body {
-        background-color: #181919;
+        background-color: #0f172a;
         color: #f8fafc;
         font-family: 'Inter', sans-serif;
       }
@@ -56,34 +56,34 @@
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #181919;
+        background: #0f172a;
       }
       ::-webkit-scrollbar-thumb {
-        background: #505353;
+        background: #64748b;
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #00E1FF;
+        background: #3b82f6;
       }
       
       /* Light Theme Overrides */
       [data-theme="light"] body {
-        background-color: #f1f5f9;
-        color: #0f172a;
+        background-color: #ffffff;
+        color: #1e293b;
       }
       
       [data-theme="light"] #root {
-        background-color: #f1f5f9;
+        background-color: #ffffff;
       }
       
       [data-theme="light"] ::-webkit-scrollbar-track {
-        background: #f1f5f9;
+        background: #f8fafc;
       }
       [data-theme="light"] ::-webkit-scrollbar-thumb {
         background: #cbd5e1;
       }
       [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
-        background: #0891b2;
+        background: #3b82f6;
       }
     </style>
   <script type="importmap">

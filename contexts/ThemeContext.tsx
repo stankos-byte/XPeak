@@ -23,11 +23,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     
     // Update body styles for light theme only
     if (theme === 'light') {
-      document.body.style.backgroundColor = '#f1f5f9';
-      document.body.style.color = '#0f172a';
+      document.body.style.backgroundColor = '#ffffff';
+      document.body.style.color = '#1e293b';
     } else {
       // Reset to default dark theme
-      document.body.style.backgroundColor = '#181919';
+      document.body.style.backgroundColor = '#0f172a';
       document.body.style.color = '#f8fafc';
     }
   }, [theme]);
