@@ -30,6 +30,13 @@ const Signup = () => {
     }
   ];
 
+  // Reset theme attribute for auth pages
+  useEffect(() => {
+    document.documentElement.removeAttribute('data-theme');
+    document.body.style.backgroundColor = '#1a1625';
+    document.body.style.color = '#ffffff';
+  }, []);
+
   // Auto-slide effect
   useEffect(() => {
     const timer = setInterval(() => {
@@ -58,7 +65,29 @@ const Signup = () => {
   return (
     <div className="min-h-screen flex bg-[#1a1625]">
       {/* Left Panel - Carousel Section */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-purple-600 via-purple-500 to-purple-700 overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-[#3b82f6] via-purple-500 to-purple-700 overflow-hidden">
+        {/* Brand Dot Pattern - Top Corner */}
+        <div 
+          className="absolute top-0 right-0 w-96 h-96 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(255,255,255,0.15) 2px, transparent 2px)',
+            backgroundSize: '24px 24px',
+            maskImage: 'radial-gradient(ellipse at top right, black 0%, transparent 70%)',
+            WebkitMaskImage: 'radial-gradient(ellipse at top right, black 0%, transparent 70%)'
+          }}
+        />
+        
+        {/* Brand Dot Pattern - Bottom Corner */}
+        <div 
+          className="absolute bottom-0 left-0 w-80 h-80 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(255,255,255,0.1) 2px, transparent 2px)',
+            backgroundSize: '20px 20px',
+            maskImage: 'radial-gradient(ellipse at bottom left, black 0%, transparent 65%)',
+            WebkitMaskImage: 'radial-gradient(ellipse at bottom left, black 0%, transparent 65%)'
+          }}
+        />
+        
         {/* Carousel Slides */}
         {slides.map((slide, index) => (
           <div
@@ -128,13 +157,46 @@ const Signup = () => {
       </div>
 
       {/* Right Panel - Signup Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#1a1625]">
-        <div className="w-full max-w-md">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#1a1625] relative overflow-hidden">
+        {/* Brand Dot Pattern - Top Right */}
+        <div 
+          className="absolute -top-20 -right-20 w-72 h-72 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(59,130,246,0.15) 2px, transparent 2px)',
+            backgroundSize: '20px 20px',
+            maskImage: 'radial-gradient(circle at center, black 20%, transparent 70%)',
+            WebkitMaskImage: 'radial-gradient(circle at center, black 20%, transparent 70%)'
+          }}
+        />
+        
+        {/* Brand Dot Pattern - Behind Form */}
+        <div 
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full pointer-events-none opacity-30"
+          style={{
+            background: 'radial-gradient(circle, rgba(147,51,234,0.08) 1.5px, transparent 1.5px)',
+            backgroundSize: '32px 32px',
+            maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 70%)',
+            WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 70%)'
+          }}
+        />
+        
+        {/* Brand Dot Pattern - Bottom Left */}
+        <div 
+          className="absolute -bottom-16 -left-16 w-64 h-64 pointer-events-none"
+          style={{
+            background: 'radial-gradient(circle, rgba(107,114,128,0.12) 2px, transparent 2px)',
+            backgroundSize: '18px 18px',
+            maskImage: 'radial-gradient(circle at center, black 25%, transparent 65%)',
+            WebkitMaskImage: 'radial-gradient(circle at center, black 25%, transparent 65%)'
+          }}
+        />
+        
+        <div className="w-full max-w-md relative z-10">
           <div className="mb-8">
             <h2 className="text-white text-4xl font-semibold mb-3">Create an account</h2>
             <p className="text-gray-400 text-sm">
               Already have an account?{' '}
-              <Link to="/login" className="text-purple-400 hover:text-purple-300 transition-colors">
+              <Link to="/login" className="text-[#3b82f6] hover:text-blue-400 transition-colors font-medium">
                 Log in
               </Link>
             </p>
@@ -148,7 +210,7 @@ const Signup = () => {
                 placeholder="Username"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
+                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
                 required
               />
             </div>
@@ -160,7 +222,7 @@ const Signup = () => {
                 placeholder="Email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
+                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
                 required
               />
             </div>
@@ -172,7 +234,7 @@ const Signup = () => {
                 placeholder="Enter your password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 transition-colors"
+                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
                 required
               />
               <button
@@ -200,12 +262,12 @@ const Signup = () => {
                 id="terms"
                 checked={formData.agreeToTerms}
                 onChange={(e) => setFormData({ ...formData, agreeToTerms: e.target.checked })}
-                className="mt-1 w-4 h-4 rounded border-gray-600 bg-[#3a3447] text-purple-600 focus:ring-purple-500 focus:ring-2"
+                className="mt-1 w-4 h-4 rounded border-gray-600 bg-[#3a3447] text-[#3b82f6] focus:ring-[#3b82f6] focus:ring-2"
                 required
               />
               <label htmlFor="terms" className="text-sm text-gray-400">
                 I agree to the{' '}
-                <a href="#" className="text-purple-400 hover:text-purple-300 underline">
+                <a href="#" className="text-[#3b82f6] hover:text-blue-400 underline font-medium">
                   Terms & Conditions
                 </a>
               </label>
@@ -214,7 +276,7 @@ const Signup = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full py-3 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium transition-colors mt-6"
+              className="w-full py-3 rounded-lg bg-gradient-to-r from-[#3b82f6] to-purple-600 hover:from-[#2563eb] hover:to-purple-700 text-white font-medium transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 mt-6"
             >
               Create account
             </button>

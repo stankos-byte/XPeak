@@ -16,19 +16,26 @@ const LandingPage: React.FC = () => {
   return <LandingView onGetStarted={handleGetStarted} />;
 };
 
-const App: React.FC = () => {
+// Wrapper component for app routes that need the theme
+const ThemedAppLayout: React.FC = () => {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/app" element={<AppLayout />} />
-          <Route path="/studio" element={<AppLayout />} />
-        </Routes>
-      </BrowserRouter>
+      <AppLayout />
     </ThemeProvider>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/app" element={<ThemedAppLayout />} />
+        <Route path="/studio" element={<ThemedAppLayout />} />
+      </Routes>
+    </BrowserRouter>
   );
 };
 

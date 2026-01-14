@@ -289,7 +289,8 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                         onAddChallenge({ 
                             title: args.title,
                             description: args.description || '',
-                            opponentId: opponent.id,
+                            partnerIds: [opponent.id],
+                            mode: 'competitive',
                             categories: formattedCategories
                         });
                         const taskCount = formattedCategories.reduce((sum: number, cat: any) => sum + (cat.tasks?.length || 0), 0);

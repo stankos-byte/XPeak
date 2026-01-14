@@ -145,7 +145,7 @@ export interface FriendChallenge {
   id: string;
   title: string;
   description: string;
-  partnerId: string; // Renamed from opponentId to be mode-agnostic
+  partnerIds: string[]; // Array to support multiple partners/opponents
   categories: ChallengeQuestCategory[];
   mode: ChallengeModeType;
   timeLeft: string;

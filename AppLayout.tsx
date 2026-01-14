@@ -159,11 +159,11 @@ const getInitialUserLocal = (): UserProfile => {
 
 // --- Mock Data Initializers ---
 const INITIAL_FRIENDS: Friend[] = [
-  { id: '1', name: 'Cyber-Stalker', level: 12, xp: 4500, status: 'online', lastActive: 'Now', color: 'bg-red-500' },
-  { id: '2', name: 'Neon-Drifter', level: 9, xp: 3200, status: 'offline', lastActive: '2h ago', color: 'bg-emerald-500' },
-  { id: '3', name: 'Null-Pointer', level: 10, xp: 3850, status: 'online', lastActive: '5m ago', color: 'bg-amber-500' },
-  { id: '4', name: 'Void-Walker', level: 8, xp: 2100, status: 'busy', lastActive: '1d ago', color: 'bg-purple-500' },
-  { id: '5', name: 'Glitch-Witch', level: 15, xp: 6200, status: 'offline', lastActive: '3d ago', color: 'bg-pink-500' },
+  { id: '1', name: 'Cyber-Stalker', level: 12, xp: 4500, status: 'online', lastActive: 'Now', color: '#ef4444' },
+  { id: '2', name: 'Neon-Drifter', level: 9, xp: 3200, status: 'offline', lastActive: '2h ago', color: '#10b981' },
+  { id: '3', name: 'Null-Pointer', level: 10, xp: 3850, status: 'online', lastActive: '5m ago', color: '#f59e0b' },
+  { id: '4', name: 'Void-Walker', level: 8, xp: 2100, status: 'busy', lastActive: '1d ago', color: '#a855f7' },
+  { id: '5', name: 'Glitch-Witch', level: 15, xp: 6200, status: 'offline', lastActive: '3d ago', color: '#ec4899' },
 ];
 
 const INITIAL_CHALLENGES: FriendChallenge[] = [
@@ -171,7 +171,7 @@ const INITIAL_CHALLENGES: FriendChallenge[] = [
     id: 'c1', 
     title: 'Sprint to Level 13', 
     description: 'First operative to reach Level 13 secures the bounty.', 
-    partnerId: '1',
+    partnerIds: ['1'],
     mode: 'competitive',
     categories: [
       {
@@ -198,7 +198,7 @@ const INITIAL_CHALLENGES: FriendChallenge[] = [
     id: 'c2', 
     title: 'Deep Work Protocol', 
     description: 'Work together to complete all productivity tasks.', 
-    partnerId: '2',
+    partnerIds: ['2'],
     mode: 'coop',
     categories: [
       {
@@ -769,7 +769,7 @@ const App: React.FC = () => {
       id: crypto.randomUUID(),
       title: challenge.title || 'New Challenge',
       description: challenge.description || 'Defeat your opponent.',
-      partnerId: challenge.partnerId || '1',
+      partnerIds: challenge.partnerIds || ['1'],
       mode: challenge.mode || 'competitive',
       categories: challenge.categories || [],
       timeLeft: '7d'
@@ -781,7 +781,7 @@ const App: React.FC = () => {
         id: crypto.randomUUID(),
         title: data.title,
         description: data.description || '',
-        partnerId: data.partnerId,
+        partnerIds: data.partnerIds,
         mode: data.mode || 'competitive',
         categories: data.categories || [],
         timeLeft: '7d' // Default duration
