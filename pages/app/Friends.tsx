@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { UserProfile, Friend, FriendChallenge } from '../../types';
-import { Zap, Users, Clock, Plus, Bell, ChevronDown, ChevronUp, Edit2, Trash2, Check } from 'lucide-react';
+import { UserProfile, Friend, FriendChallenge, ChallengeQuestCategory, ChallengeQuestTask } from '../../types';
+import { Zap, Users, Plus, Bell, ChevronDown, ChevronUp, Pencil, Trash2, Check } from 'lucide-react';
 import { calculateChallengeXP } from '../../utils/gamification';
 
 interface FriendsViewProps {
@@ -13,19 +13,19 @@ interface FriendsViewProps {
   onToggleChallengeTask: (challengeId: string, categoryId: string, taskId: string) => void;
 }
 
-const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
+const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
   const [expandedChallenges, setExpandedChallenges] = useState<Record<string, boolean>>({});
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const toggleChallenge = (challengeId: string) => {
-    setExpandedChallenges(prev => ({
+    setExpandedChallenges((prev: Record<string, boolean>) => ({
       ...prev,
       [challengeId]: !prev[challengeId]
     }));
   };
 
   const toggleCategory = (categoryId: string) => {
-    setExpandedCategories(prev => ({
+    setExpandedCategories((prev: Record<string, boolean>) => ({
       ...prev,
       [categoryId]: !prev[categoryId]
     }));
@@ -34,52 +34,48 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
   return (
     <div className="max-w-7xl mx-auto animate-in fade-in duration-500 pb-20">
       {/* Header */}
-      <header className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-black text-white mb-2 uppercase tracking-tighter italic">
-          GLOBAL NETWORK
-        </h1>
-        <p className="text-gray-400">Manage alliances and competitive contracts.</p>
+      <header className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
+        <div>
+          <h1 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">
+            Global Network
+          </h1>
+          <p className="text-secondary font-medium tracking-wide">Manage alliances and competitive contracts.</p>
+        </div>
+        <button 
+          onClick={onCreateChallenge}
+          className="flex items-center gap-2 bg-primary hover:bg-cyan-400 text-background px-6 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 w-full md:w-auto justify-center"
+        >
+          <Plus size={20} strokeWidth={3} />
+          Create Contract
+        </button>
       </header>
 
       {/* Main Layout: Challenges on left, Operatives on right */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Challenges */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Create Contract Button */}
-          <div 
-            onClick={onCreateChallenge}
-            className="bg-[#1a1f2e] border-2 border-dashed border-gray-700 rounded-2xl p-12 flex flex-col items-center justify-center cursor-pointer hover:border-gray-600 transition-all group"
-          >
-            <div className="w-16 h-16 rounded-full border-2 border-gray-600 flex items-center justify-center mb-6 group-hover:border-primary transition-colors">
-              <Plus size={32} className="text-gray-500 group-hover:text-primary transition-colors" />
-            </div>
-            <h3 className="text-2xl font-black text-white mb-2 italic uppercase tracking-tight">
-              CREATE CONTRACT
-            </h3>
-            <p className="text-gray-400 text-sm">Set terms, wager XP, and prove your superiority.</p>
-          </div>
 
           {/* Challenge Cards */}
-          {challenges.map((challenge) => {
-            const partners = friends.filter(f => challenge.partnerIds.includes(f.id));
+          {challenges.map((challenge: FriendChallenge) => {
+            const partners = friends.filter((f: Friend) => challenge.partnerIds.includes(f.id));
             const isCoop = challenge.mode === 'coop';
             
-            const totalTasks = challenge.categories.reduce((sum, cat) => sum + cat.tasks.length, 0);
+            const totalTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => sum + cat.tasks.length, 0);
             
             let myCompletedTasks = 0;
             let partnerCompletedTasks = 0;
             
             if (isCoop) {
-              const completedTasks = challenge.categories.reduce((sum, cat) => 
-                sum + cat.tasks.filter(t => t.status === 'completed').length, 0
+              const completedTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
+                sum + cat.tasks.filter((t: ChallengeQuestTask) => t.status === 'completed').length, 0
               );
               myCompletedTasks = completedTasks;
             } else {
-              myCompletedTasks = challenge.categories.reduce((sum, cat) => 
-                sum + cat.tasks.filter(t => t.myStatus === 'completed').length, 0
+              myCompletedTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
+                sum + cat.tasks.filter((t: ChallengeQuestTask) => t.myStatus === 'completed').length, 0
               );
-              partnerCompletedTasks = challenge.categories.reduce((sum, cat) => 
-                sum + cat.tasks.filter(t => t.opponentStatus === 'completed').length, 0
+              partnerCompletedTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
+                sum + cat.tasks.filter((t: ChallengeQuestTask) => t.opponentStatus === 'completed').length, 0
               );
             }
             
@@ -107,10 +103,10 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                   {/* Action Buttons */}
                   <button
                     onClick={() => onEditChallenge(challenge)}
-                    className="w-8 h-8 rounded-full bg-gray-700/50 hover:bg-blue-500/20 border border-gray-600 hover:border-blue-500 flex items-center justify-center transition-all group"
+                    className="p-1.5 text-secondary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                     title="Edit Challenge"
                   >
-                    <Edit2 size={14} className="text-gray-400 group-hover:text-blue-400" />
+                    <Pencil size={16} />
                   </button>
                   <button
                     onClick={() => {
@@ -118,15 +114,15 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                         onDeleteChallenge(challenge.id);
                       }
                     }}
-                    className="w-8 h-8 rounded-full bg-gray-700/50 hover:bg-red-500/20 border border-gray-600 hover:border-red-500 flex items-center justify-center transition-all group"
+                    className="p-1.5 text-secondary hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
                     title="Delete Challenge"
                   >
-                    <Trash2 size={14} className="text-gray-400 group-hover:text-red-400" />
+                    <Trash2 size={16} />
                   </button>
                   
                   {/* Partner Avatars */}
                   <div className="flex items-center -space-x-2 ml-2">
-                    {partners.slice(0, 3).map((partner, idx) => (
+                    {partners.slice(0, 3).map((partner: Friend, idx: number) => (
                       <div
                         key={idx}
                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 border-[#1e2738]"
@@ -213,7 +209,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                   {/* Expanded Categories and Tasks */}
                   {expandedChallenges[challenge.id] && (
                     <div className="mt-4 space-y-3 border-t border-gray-700 pt-4">
-                      {challenge.categories.map((category) => {
+                      {challenge.categories.map((category: ChallengeQuestCategory) => {
                         const categoryKey = `${challenge.id}-${category.id}`;
                         return (
                           <div key={category.id} className="space-y-2">
@@ -227,7 +223,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                               </span>
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-gray-400">
-                                  {category.tasks.filter(t => 
+                                  {category.tasks.filter((t: ChallengeQuestTask) => 
                                     isCoop ? t.status === 'completed' : t.myStatus === 'completed'
                                   ).length} / {category.tasks.length}
                                 </span>
@@ -242,7 +238,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
                             {/* Tasks List */}
                             {expandedCategories[categoryKey] && (
                               <div className="space-y-2 pl-3">
-                                {category.tasks.map((task) => {
+                                {category.tasks.map((task: ChallengeQuestTask) => {
                                   const isCompleted = isCoop 
                                     ? task.status === 'completed'
                                     : task.myStatus === 'completed';
@@ -331,7 +327,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
 
             {/* Operatives List */}
             <div className="space-y-3">
-              {friends.map((friend) => (
+              {friends.map((friend: Friend) => (
                 <div key={friend.id} className="flex items-center justify-between group cursor-pointer">
                   <div className="flex items-center gap-3">
                     <div className="relative">

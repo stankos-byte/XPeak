@@ -2,7 +2,7 @@
 import React from 'react';
 import { Task, Difficulty, SkillCategory } from '../../types';
 import { SKILL_COLORS, DIFFICULTY_MULTIPLIERS } from '../../constants';
-import { CheckCircle2, Circle, Flame, Repeat, Pencil, Trash2, Undo2, Copy } from 'lucide-react';
+import { CheckCircle2, Circle, Flame, Repeat, Pencil, Trash2, Undo2 } from 'lucide-react';
 
 interface TaskCardProps {
   task: Task;
@@ -48,7 +48,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onComplete, onUncomplete, onD
                ? 'text-emerald-500 hover:text-red-400' 
                : 'text-secondary hover:text-primary'
           }`}
-          title={task.completed ? "Undo completion" : "Complete Quest"}
+          title={task.completed ? "Undo completion" : "Complete Task"}
         >
           {task.completed ? (
             <CheckCircle2 size={24} />
@@ -92,25 +92,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onComplete, onUncomplete, onD
         </div>
 
         <div className="flex flex-col items-end justify-between h-full gap-2">
-           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button 
-                  onClick={() => onSaveTemplate(task)}
-                  className="p-1.5 text-secondary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                  title="Save as Template"
-              >
-                  <Copy size={16} />
-              </button>
+           <div className="flex items-center gap-1 transition-opacity">
               <button 
                   onClick={() => onEdit(task)}
                   className="p-1.5 text-secondary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                  title="Edit Quest"
+                  title="Edit Task"
               >
                   <Pencil size={16} />
               </button>
               <button 
                   onClick={() => onDelete(task.id)}
-                  className="p-1.5 text-secondary hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"
-                  title="Abandon Quest"
+                  className="p-1.5 text-secondary hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                  title="Abandon Task"
               >
                   <Trash2 size={16} />
               </button>

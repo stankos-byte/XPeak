@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Task, 
   UserProfile, 
@@ -11,12 +11,17 @@ import {
   QuestTask,
   TaskTemplate,
   ProfileLayout,
-  WidgetId,
   Friend,
   FriendChallenge,
-  ChatMessage
+  ChatMessage,
+  ChallengeQuestCategory,
+  ChallengeQuestTask,
+  ChallengeModeType
 } from './types';
-import { calculateXP, calculateLevel, getLevelProgress, getXPRequirement, calculateChallengeXP } from './utils/gamification';
+import { calculateXP, calculateLevel, getLevelProgress, calculateChallengeXP } from './utils/gamification';
+import { storage, STORAGE_KEYS } from './services/localStorage';
+import { useTimer } from './hooks/useTimer';
+import { useHabitSync } from './hooks/useHabitSync';
 import CreateTaskModal from './components/modals/CreateTaskModal';
 import SimpleInputModal from './components/modals/SimpleInputModal';
 import DeleteConfirmModal from './components/modals/DeleteConfirmModal';
@@ -33,64 +38,13 @@ import {
   Swords, 
   Trophy, 
   User, 
-  Plus, 
-  Activity,
-  Zap,
-  TrendingUp,
-  LayoutDashboard,
   BookOpen,
-  Play,
-  Pause,
-  RotateCcw,
-  Target,
-  LayoutGrid,
-  Clock,
-  X,
-  Crown,
   CheckSquare,
-  Square,
-  Trash2,
-  Mountain,
-  ChevronRight,
-  ChevronDown,
   Map,
-  Circle,
-  CheckCircle2,
-  PlayCircle,
-  FolderPlus,
-  FilePlus,
-  Pencil,
-  Save,
-  Volume2,
-  Settings2,
-  Minus,
-  AlertTriangle,
-  Flag,
   Sparkles,
-  Timer,
-  BarChart2,
-  Calendar,
-  Layers,
-  Hourglass,
-  Scissors,
-  Brain,
-  Home,
-  Loader2,
-  Settings,
-  Eye,
-  EyeOff,
-  History,
-  PlusCircle,
-  AlertCircle,
   MessageSquare,
   Users,
-  Search,
-  ShieldAlert,
-  Medal,
-  Flame,
-  UserPlus,
   Bot,
-  MoreVertical
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -122,39 +76,40 @@ const DEFAULT_LAYOUT: ProfileLayout = {
 };
 
 const getInitialUserLocal = (): UserProfile => {
-  const saved = localStorage.getItem('lvlup_user');
-  if (saved) {
-    try {
-      const parsed = JSON.parse(saved);
-      // Migration: Ensure all default widgets exist
-      const existingIds = new Set(parsed.layout?.widgets?.map((w: any) => w.id) || []);
-      const newWidgets = DEFAULT_LAYOUT.widgets.filter(w => !existingIds.has(w.id));
-      
-      const layout = parsed.layout ? {
-          ...parsed.layout,
-          widgets: [...parsed.layout.widgets, ...newWidgets]
-      } : DEFAULT_LAYOUT;
-
-      return { ...parsed, layout };
-    } catch (e) {
-      console.error("Failed to load user state", e);
-    }
-  }
-  const skills: any = {};
-  Object.values(SkillCategory).forEach(cat => {
-    skills[cat] = { category: cat, xp: 0, level: 0 };
-  });
-  return { 
-    name: 'Protocol-01', 
-    totalXP: 0, 
-    level: 0, 
-    skills, 
-    history: [], 
-    identity: '', 
-    goals: [], 
-    templates: [], 
-    layout: DEFAULT_LAYOUT 
+  const getDefaultUser = (): UserProfile => {
+    const skills = {} as Record<SkillCategory, { category: SkillCategory; xp: number; level: number }>;
+    Object.values(SkillCategory).forEach(cat => {
+      skills[cat] = { category: cat, xp: 0, level: 0 };
+    });
+    return { 
+      name: 'Protocol-01', 
+      totalXP: 0, 
+      level: 0, 
+      skills, 
+      history: [], 
+      identity: '', 
+      goals: [], 
+      templates: [], 
+      layout: DEFAULT_LAYOUT 
+    };
   };
+
+  const saved = storage.get<UserProfile | null>(STORAGE_KEYS.USER, null);
+  
+  if (saved) {
+    // Migration: Ensure all default widgets exist
+    const existingIds = new Set(saved.layout?.widgets?.map((w) => w.id) || []);
+    const newWidgets = DEFAULT_LAYOUT.widgets.filter(w => !existingIds.has(w.id));
+    
+    const layout = saved.layout ? {
+        ...saved.layout,
+        widgets: [...saved.layout.widgets, ...newWidgets]
+    } : DEFAULT_LAYOUT;
+
+    return { ...saved, layout };
+  }
+  
+  return getDefaultUser();
 };
 
 // --- Mock Data Initializers ---
@@ -218,18 +173,17 @@ const INITIAL_CHALLENGES: FriendChallenge[] = [
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile>(getInitialUserLocal);
-  const [tasks, setTasks] = useState<Task[]>(() => JSON.parse(localStorage.getItem('lvlup_tasks') || '[]'));
-  const [mainQuests, setMainQuests] = useState<MainQuest[]>(() => JSON.parse(localStorage.getItem('lvlup_quests') || '[]')); 
-  const [friends, setFriends] = useState<Friend[]>(INITIAL_FRIENDS);
+  const [tasks, setTasks] = useState<Task[]>(() => storage.get<Task[]>(STORAGE_KEYS.TASKS, []));
+  const [mainQuests, setMainQuests] = useState<MainQuest[]>(() => storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, [])); 
+  const friends = INITIAL_FRIENDS;
   const [challenges, setChallenges] = useState<FriendChallenge[]>(INITIAL_CHALLENGES);
   // Chat state lifted to App.tsx for persistence
   const [aiMessages, setAiMessages] = useState<ChatMessage[]>([
     { id: 'init', role: 'model', text: `System Online. Greetings, ${user.name}. I am your designated Support AI. I have access to your skill matrix, active directives, and social protocols. How may I assist in optimizing your progression today?` }
   ]);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
-    const saved = localStorage.getItem('lvlup_quests');
-    if (saved) return new Set(JSON.parse(saved).map((q: any) => q.id));
-    return new Set();
+    const quests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, []);
+    return new Set(quests.map((q: MainQuest) => q.id));
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -241,12 +195,6 @@ const App: React.FC = () => {
   const [questTaskConfig, setQuestTaskConfig] = useState<{isOpen: boolean; questId?: string; categoryId?: string; editingTask?: QuestTask | null;}>({ isOpen: false });
   const [activeTab, setActiveTab] = useState<'dashboard' | 'quests' | 'profile' | 'tools' | 'friends' | 'assistant'>('dashboard');
   const [showLevelUp, setShowLevelUp] = useState<{show: boolean, level: number} | null>(null);
-  const [workDuration, setWorkDuration] = useState(25 * 60);
-  const [breakDuration, setBreakDuration] = useState(5 * 60);
-  const [timerTimeLeft, setTimerTimeLeft] = useState(25 * 60);
-  const [isTimerActive, setIsTimerActive] = useState(false);
-  const [timerMode, setTimerMode] = useState<'work' | 'break'>('work');
-  const [timerEndTime, setTimerEndTime] = useState<number | null>(null);
   const [questToDelete, setQuestToDelete] = useState<string | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isChallengeModalOpen, setIsChallengeModalOpen] = useState(false);
@@ -254,121 +202,62 @@ const App: React.FC = () => {
   const [editingChallenge, setEditingChallenge] = useState<FriendChallenge | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Habit Sync Logic
-  useEffect(() => {
-    const syncHabits = () => {
-      const now = new Date();
-      // "Today" at 00:00:00
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      // "Yesterday" at 00:00:00
-      const yesterday = today - (24 * 60 * 60 * 1000);
+  // Use custom hooks for timer and habit sync
+  const timer = useTimer(25 * 60, 5 * 60);
+  useHabitSync(tasks, setTasks);
 
-      setTasks(prev => {
-        let changed = false;
-        const next = prev.map(t => {
-          if (!t.isHabit) return t;
+  // Save to localStorage with error handling
+  useEffect(() => { storage.set(STORAGE_KEYS.USER, user); }, [user]);
+  useEffect(() => { storage.set(STORAGE_KEYS.TASKS, tasks); }, [tasks]);
+  useEffect(() => { storage.set(STORAGE_KEYS.QUESTS, mainQuests); }, [mainQuests]);
 
-          // Normalize completion date to midnight timestamp
-          const lastDate = t.lastCompletedDate ? new Date(t.lastCompletedDate) : null;
-          const lastTime = lastDate ? new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate()).getTime() : 0;
+  const applyGlobalXPChange = (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => {
+    setUser(prev => {
+      const newTotalXP = Math.max(0, prev.totalXP + amount);
+      const newLevel = calculateLevel(newTotalXP);
+      
+      if (amount > 0 && newLevel > prev.level) {
+        setShowLevelUp({ show: true, level: newLevel });
+        setTimeout(() => setShowLevelUp(null), 3000);
+      }
 
-          let newCompleted = t.completed;
-          let newStreak = t.streak;
-
-          // 1. Reset if completed prior to today
-          if (t.completed && lastTime < today) {
-            newCompleted = false;
-            changed = true;
+      let newSkills = prev.skills;
+      if (skillCategory && skillCategory !== SkillCategory.MISC) {
+        const amountToGrant = skillAmount !== undefined ? skillAmount : amount;
+        const skill = prev.skills[skillCategory];
+        const newSkillXP = Math.max(0, skill.xp + amountToGrant);
+        newSkills = {
+          ...prev.skills,
+          [skillCategory]: {
+            ...skill,
+            xp: newSkillXP,
+            level: calculateLevel(newSkillXP)
           }
+        };
+      }
 
-          // 2. Break streak if not completed yesterday or today
-          if (lastTime < yesterday && t.streak > 0) {
-            newStreak = 0;
-            changed = true;
-          }
+      return {
+        ...prev,
+        totalXP: newTotalXP,
+        level: newLevel,
+        skills: newSkills,
+        history: [{ date: new Date().toISOString(), xpGained: amount, taskId: historyId }, ...prev.history]
+      };
+    });
 
-          return changed ? { ...t, completed: newCompleted, streak: newStreak } : t;
-        });
-        return changed ? next : prev;
-      });
-    };
-
-    syncHabits();
-    const interval = setInterval(syncHabits, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, []);
-
-  // Play notification sound when timer ends
-  const playTimerEndSound = () => {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      // Pleasant notification tone - longer and more noticeable
-      oscillator.frequency.value = 800; // Hz
-      oscillator.type = 'sine';
-      
-      // Fade in and out for smoothness, but louder and longer
-      gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.25, audioContext.currentTime + 0.1);
-      gainNode.gain.linearRampToValueAtTime(0.25, audioContext.currentTime + 0.5);
-      gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.8);
-      
-      oscillator.start(audioContext.currentTime);
-      oscillator.stop(audioContext.currentTime + 0.8);
-    } catch (error) {
-      console.log('Audio playback not supported');
-    }
-  };
-
-  useEffect(() => {
-    let interval: any = null;
-    if (isTimerActive && timerEndTime) {
-      interval = setInterval(() => {
-        const now = Date.now();
-        const diff = Math.ceil((timerEndTime - now) / 1000);
-        if (diff <= 0) {
-          setIsTimerActive(false);
-          setTimerEndTime(null);
-          playTimerEndSound(); // Play notification sound
-          // Automatically reset to the appropriate duration
-          setTimerTimeLeft(timerMode === 'work' ? workDuration : breakDuration);
-        } else {
-          setTimerTimeLeft(diff);
-        }
-      }, 500); // Check every 500ms to correct drift quickly
-    }
-    return () => clearInterval(interval);
-  }, [isTimerActive, timerEndTime, timerMode, workDuration, breakDuration]);
-
-  useEffect(() => { localStorage.setItem('lvlup_user', JSON.stringify(user)); }, [user]);
-  useEffect(() => { localStorage.setItem('lvlup_tasks', JSON.stringify(tasks)); }, [tasks]);
-  useEffect(() => { localStorage.setItem('lvlup_quests', JSON.stringify(mainQuests)); }, [mainQuests]);
-
-  const applyGlobalXPChange = (amount: number, historyId: string, popups: Record<string, number>) => {
-    const newTotalXP = Math.max(0, user.totalXP + amount);
-    const newLevel = calculateLevel(newTotalXP);
-    if (amount > 0 && newLevel > user.level) {
-      setShowLevelUp({ show: true, level: newLevel });
-      setTimeout(() => setShowLevelUp(null), 3000);
-    }
-    setUser(prev => ({
-      ...prev, totalXP: newTotalXP, level: newLevel,
-      history: [{ date: new Date().toISOString(), xpGained: amount, taskId: historyId }, ...prev.history]
-    }));
-    setXpPopups(prev => ({ ...prev, ...popups }));
-    setFlashKey(k => k + 1);
+    setXpPopups((prev: Record<string, number>) => ({ ...prev, ...popups }));
+    setFlashKey((k: number) => k + 1);
     const popupKeys = Object.keys(popups);
-    setTimeout(() => setXpPopups(p => { const n = { ...p }; popupKeys.forEach(k => delete n[k]); return n; }), 1500);
+    setTimeout(() => setXpPopups((p: Record<string, number>) => { 
+      const n = { ...p }; 
+      popupKeys.forEach((k: string) => delete n[k]); 
+      return n; 
+    }), 1500);
   };
 
   // Logic for task completion on Dashboard
   const handleCompleteTask = (id: string) => {
-    const task = tasks.find(t => t.id === id);
+    const task = tasks.find((t: Task) => t.id === id);
     if (!task) return;
     const xpResult = calculateXP(task);
     const amount = xpResult.total;
@@ -376,37 +265,19 @@ const App: React.FC = () => {
     // Increment streak if habit
     const newStreak = task.isHabit ? (task.streak || 0) + 1 : 0;
 
-    setTasks(prev => prev.map(t => t.id === id ? { 
+    setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { 
         ...t, 
         completed: true, 
         lastCompletedDate: new Date().toISOString(), 
         streak: newStreak 
     } : t));
 
-    setUser(prev => {
-      // Don't update specific skills if category is MISC/Default
-      if (task.skillCategory === SkillCategory.MISC) return prev;
-
-      const skill = prev.skills[task.skillCategory];
-      const newSkillXP = Math.max(0, skill.xp + amount);
-      return {
-        ...prev,
-        skills: {
-          ...prev.skills,
-          [task.skillCategory]: {
-            ...skill,
-            xp: newSkillXP,
-            level: calculateLevel(newSkillXP)
-          }
-        }
-      };
-    });
-    applyGlobalXPChange(amount, id, { [id]: amount });
+    applyGlobalXPChange(amount, id, { [id]: amount }, task.skillCategory);
   };
 
   // Logic for undoing task completion on Dashboard
   const handleUncompleteTask = (id: string) => {
-    const task = tasks.find(t => t.id === id);
+    const task = tasks.find((t: Task) => t.id === id);
     if (!task) return;
     const xpResult = calculateXP(task);
     const amount = -xpResult.total;
@@ -414,53 +285,14 @@ const App: React.FC = () => {
     // Decrement streak if habit
     const newStreak = task.isHabit ? Math.max(0, (task.streak || 0) - 1) : 0;
 
-    setTasks(prev => prev.map(t => t.id === id ? { 
+    setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { 
         ...t, 
         completed: false, 
         lastCompletedDate: null, 
         streak: newStreak 
     } : t));
 
-    setUser(prev => {
-      const newTotalXP = Math.max(0, prev.totalXP + amount);
-      const newLevel = calculateLevel(newTotalXP);
-      
-      // Remove the most recent history entry for this task
-      const historyIndex = prev.history.findIndex(h => h.taskId === id);
-      const newHistory = historyIndex !== -1 
-        ? [...prev.history.slice(0, historyIndex), ...prev.history.slice(historyIndex + 1)]
-        : prev.history;
-
-      if (task.skillCategory === SkillCategory.MISC) {
-        return {
-          ...prev,
-          totalXP: newTotalXP,
-          level: newLevel,
-          history: newHistory
-        };
-      }
-
-      const skill = prev.skills[task.skillCategory];
-      const newSkillXP = Math.max(0, skill.xp + amount);
-      return {
-        ...prev,
-        totalXP: newTotalXP,
-        level: newLevel,
-        skills: {
-          ...prev.skills,
-          [task.skillCategory]: {
-            ...skill,
-            xp: newSkillXP,
-            level: calculateLevel(newSkillXP)
-          }
-        },
-        history: newHistory
-      };
-    });
-    
-    setXpPopups(prev => ({ ...prev, [id]: amount }));
-    setFlashKey(k => k + 1);
-    setTimeout(() => setXpPopups(p => { const n = { ...p }; delete n[id]; return n; }), 1500);
+    applyGlobalXPChange(amount, id, { [id]: amount }, task.skillCategory);
   };
 
   // Saving a task as a reusable template
@@ -480,91 +312,64 @@ const App: React.FC = () => {
   };
 
   const handleToggleQuestTask = (qid: string, cid: string, tid: string) => {
-    setMainQuests(qs => {
-      const newQuests = [...qs];
-      const qIdx = newQuests.findIndex(q => q.id === qid);
-      if (qIdx === -1) return qs;
-      const cIdx = newQuests[qIdx].categories.findIndex(c => c.id === cid);
-      if (cIdx === -1) return qs;
-      const tIdx = newQuests[qIdx].categories[cIdx].tasks.findIndex(t => t.task_id === tid);
-      if (tIdx === -1) return qs;
+    const q = mainQuests.find(x => x.id === qid);
+    const c = q?.categories.find(x => x.id === cid);
+    const t = c?.tasks.find(x => x.task_id === tid);
+    if (!q || !c || !t) return;
 
-      const quest = newQuests[qIdx];
-      const category = quest.categories[cIdx];
-      const questTask = category.tasks[tIdx];
-      const isCompleting = questTask.status !== 'completed';
-      
-      const mappedTaskForXP: Task = { id: questTask.task_id, difficulty: questTask.difficulty, skillCategory: questTask.skillCategory, title: questTask.name, isHabit: false, completed: questTask.status === 'completed', streak: 0, lastCompletedDate: null, createdAt: '' };
-      const xpResult = calculateXP(mappedTaskForXP);
-      let immediateBonusXP = 0;
-      let awardedSectionBonus = false;
+    const isCompleting = t.status !== 'completed';
+    const xpResult = calculateXP({ 
+      difficulty: t.difficulty, 
+      skillCategory: t.skillCategory, 
+      title: t.name 
+    } as Task);
+    
+    const baseAmount = isCompleting ? xpResult.total : -xpResult.total;
+    let bonusAmount = 0;
+    let popups: Record<string, number> = { [tid]: baseAmount };
 
-      if (isCompleting) {
-        if (category.tasks.every(t => t.task_id === tid || t.status === 'completed')) {
-          immediateBonusXP += 20;
-          awardedSectionBonus = true;
-        }
-      } else {
-        if (isCategoryComplete(category)) {
-          immediateBonusXP -= 20;
-          awardedSectionBonus = true;
-        }
-      }
+    // Section Bonus
+    const isCategoryCompleting = isCompleting && c.tasks.every(task => task.task_id === tid || task.status === 'completed');
+    const wasCategoryComplete = !isCompleting && isCategoryComplete(c);
+    
+    if (isCategoryCompleting) {
+      bonusAmount += 20;
+      popups[`section-bonus-${cid}`] = 20;
+    } else if (wasCategoryComplete) {
+      bonusAmount -= 20;
+      popups[`section-bonus-${cid}`] = -20;
+    }
 
-      const questBonusAmount = getQuestBonusAmount(quest.categories.length);
-      const baseAmount = isCompleting ? xpResult.total : -xpResult.total;
-      
-      if (isCompleting) {
-        if (quest.categories.every(cat => cat.id === cid ? cat.tasks.every(t => t.task_id === tid || t.status === 'completed') : isCategoryComplete(cat))) {
-          setPendingQuestBonus({ qid, bonus: questBonusAmount, tid, questTitle: quest.title });
-        }
-      } else {
-        if (isQuestComplete(quest)) {
-          immediateBonusXP -= questBonusAmount;
-          setXpPopups(prev => ({ ...prev, [`quest-bonus-${qid}`]: -questBonusAmount }));
-          setTimeout(() => setXpPopups(p => { const n = { ...p }; delete n[`quest-bonus-${qid}`]; return n; }), 1500);
-        }
-      }
+    // Award Quest Bonus
+    const questBonusValue = getQuestBonusAmount(q.categories.length);
+    const isQuestCompleting = isCompleting && q.categories.every((cat: QuestCategory) => 
+      cat.id === cid 
+        ? cat.tasks.every((task: QuestTask) => task.task_id === tid || task.status === 'completed')
+        : isCategoryComplete(cat)
+    );
+    const wasQuestCompleteBefore = !isCompleting && isQuestComplete(q);
 
-      const totalImmediateXP = baseAmount + immediateBonusXP;
-      const newTotalXP = Math.max(0, user.totalXP + totalImmediateXP);
-      const newLevel = calculateLevel(newTotalXP);
-      if (isCompleting && newLevel > user.level) { setShowLevelUp({ show: true, level: newLevel }); setTimeout(() => setShowLevelUp(null), 3000); }
-      
-      const skill = user.skills[questTask.skillCategory];
-      
-      setUser(prev => {
-        // When uncompleting, remove the history entry for this task
-        let newHistory = prev.history;
-        if (!isCompleting) {
-          const historyIndex = prev.history.findIndex(h => h.taskId === tid);
-          if (historyIndex !== -1) {
-            newHistory = [...prev.history.slice(0, historyIndex), ...prev.history.slice(historyIndex + 1)];
-          }
-        } else {
-          newHistory = [{ date: new Date().toISOString(), xpGained: totalImmediateXP, taskId: tid }, ...prev.history];
-        }
-        
-        return {
-          ...prev, 
-          totalXP: newTotalXP, 
-          level: newLevel,
-          skills: questTask.skillCategory === SkillCategory.MISC 
-            ? prev.skills 
-            : { ...prev.skills, [questTask.skillCategory]: { ...skill, xp: Math.max(0, skill.xp + baseAmount), level: calculateLevel(Math.max(0, skill.xp + baseAmount)) } },
-          history: newHistory
-        };
-      });
+    if (isQuestCompleting) {
+      setPendingQuestBonus({ qid, bonus: questBonusValue, tid, questTitle: q.title });
+    } else if (wasQuestCompleteBefore) {
+      bonusAmount -= questBonusValue;
+      popups[`quest-bonus-${qid}`] = -questBonusValue;
+    }
 
-      const nPopups: Record<string, number> = { [tid]: baseAmount };
-      if (awardedSectionBonus) nPopups[`section-bonus-${cid}`] = isCompleting ? 20 : -20;
-      setXpPopups(prev => ({ ...prev, ...nPopups }));
-      setFlashKey(k => k + 1);
-      setTimeout(() => setXpPopups(p => { const n = { ...p }; delete n[tid]; delete n[`section-bonus-${cid}`]; return n; }), 1500);
+    // Update Quests State
+    setMainQuests((qs: MainQuest[]) => qs.map((mq: MainQuest) => mq.id !== qid ? mq : {
+      ...mq,
+      categories: mq.categories.map((cat: QuestCategory) => cat.id !== cid ? cat : {
+        ...cat,
+        tasks: cat.tasks.map((task: QuestTask) => task.task_id !== tid ? task : {
+          ...task,
+          status: isCompleting ? 'completed' : 'pending'
+        } as QuestTask)
+      })
+    }));
 
-      newQuests[qIdx].categories[cIdx].tasks[tIdx].status = isCompleting ? 'completed' : 'pending';
-      return [...newQuests];
-    });
+    // Grant XP using the new safe function
+    applyGlobalXPChange(baseAmount + bonusAmount, tid, popups, t.skillCategory, baseAmount);
   };
 
   const handleConfirmQuestBonus = () => {
@@ -583,7 +388,7 @@ const App: React.FC = () => {
 
     setOraclingQuestId(quest.id);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Break down the quest "${quest.title}" into strategic categories and tasks. 
@@ -617,10 +422,10 @@ const App: React.FC = () => {
         } 
       });
       const data = JSON.parse(response.text || '[]');
-      const newCats = data.map((c: any) => ({ 
+      const newCats = data.map((c: { title: string; tasks: any[] }) => ({ 
         id: crypto.randomUUID(), 
         title: c.title, 
-        tasks: c.tasks.map((t: any) => ({ 
+        tasks: c.tasks.map((t: { name: string; difficulty: Difficulty; skillCategory: SkillCategory }) => ({ 
           task_id: crypto.randomUUID(), 
           name: t.name, 
           status: 'pending', 
@@ -630,7 +435,7 @@ const App: React.FC = () => {
       }));
       
       // REPLACE categories instead of appending
-      setMainQuests(prev => prev.map(mq => mq.id === quest.id ? { ...mq, categories: newCats } : mq));
+      setMainQuests((prev: MainQuest[]) => prev.map((mq: MainQuest) => mq.id === quest.id ? { ...mq, categories: newCats } : mq));
       if (!expandedNodes.has(quest.id)) toggleNode(quest.id);
     } catch (e) { 
       console.error(e); 
@@ -640,95 +445,69 @@ const App: React.FC = () => {
   };
 
   const handleDeleteQuestTask = (questId: string, categoryId: string, taskId: string) => {
-    setMainQuests(qs => {
-      const q = qs.find(x => x.id === questId);
-      if (!q) return qs;
-      const c = q.categories.find(x => x.id === categoryId);
-      if (!c) return qs;
+    const q = mainQuests.find((x: MainQuest) => x.id === questId);
+    const c = q?.categories.find((x: QuestCategory) => x.id === categoryId);
+    if (!q || !c) return;
+
+    const wasSecComp = isCategoryComplete(c);
+    const wasQuestComp = isQuestComplete(q);
+    const remainingTasks = c.tasks.filter((t: QuestTask) => t.task_id !== taskId);
+    const isSecNowComp = remainingTasks.length > 0 && remainingTasks.every((t: QuestTask) => t.status === 'completed');
+    
+    let bonuses: { amount: number; type: string; key: string; }[] = [];
+
+    if (!wasSecComp && isSecNowComp) {
+      bonuses.push({ amount: 20, type: `section-del-bonus-${categoryId}`, key: `section-bonus-${categoryId}` });
       
-      const wasSecComp = isCategoryComplete(c);
-      const wasQuestComp = isQuestComplete(q);
-      const remainingTasks = c.tasks.filter(t => t.task_id !== taskId);
-      const isSecNowComp = remainingTasks.length > 0 && remainingTasks.every(t => t.status === 'completed');
+      const updatedQuest = { 
+        ...q, 
+        categories: q.categories.map((cat: QuestCategory) => cat.id === categoryId ? { ...cat, tasks: remainingTasks } : cat) 
+      };
       
-      if (!wasSecComp && isSecNowComp) {
-        applyGlobalXPChange(20, `section-del-bonus-${categoryId}`, { [`section-bonus-${categoryId}`]: 20 });
-        const updatedCategory = { ...c, tasks: remainingTasks };
-        const updatedQuest = { ...q, categories: q.categories.map(cat => cat.id === categoryId ? updatedCategory : cat) };
-        if (!wasQuestComp && isQuestComplete(updatedQuest)) {
-          const bonus = getQuestBonusAmount(updatedQuest.categories.length);
-          applyGlobalXPChange(bonus, `quest-del-bonus-${questId}`, { [`quest-bonus-${questId}`]: bonus });
-        }
+      if (!wasQuestComp && isQuestComplete(updatedQuest)) {
+        const bonus = getQuestBonusAmount(updatedQuest.categories.length);
+        bonuses.push({ amount: bonus, type: `quest-del-bonus-${questId}`, key: `quest-bonus-${questId}` });
       }
-      
-      return qs.map(mq => mq.id === questId ? { ...mq, categories: mq.categories.map(cat => cat.id === categoryId ? { ...cat, tasks: cat.tasks.filter(t => t.task_id !== taskId) } : cat) } : mq);
-    });
+    }
+
+    setMainQuests((qs: MainQuest[]) => qs.map((mq: MainQuest) => mq.id === questId ? { 
+      ...mq, 
+      categories: mq.categories.map((cat: QuestCategory) => cat.id === categoryId ? { ...cat, tasks: remainingTasks } : cat) 
+    } : mq));
+
+    bonuses.forEach(b => applyGlobalXPChange(b.amount, b.type, { [b.key]: b.amount }));
   };
 
   const handleDeleteCategory = (questId: string, categoryId: string) => {
-    setMainQuests(qs => {
-      const q = qs.find(x => x.id === questId);
-      if (!q) return qs;
-      const wasQuestComp = isQuestComplete(q);
-      const remainingCats = q.categories.filter(c => c.id !== categoryId);
-      const isQuestNowComp = remainingCats.length > 0 && remainingCats.every(cat => isCategoryComplete(cat));
-      
-      if (!wasQuestComp && isQuestNowComp) {
-        const bonus = getQuestBonusAmount(remainingCats.length);
-        applyGlobalXPChange(bonus, `quest-catdel-bonus-${questId}`, { [`quest-bonus-${questId}`]: bonus });
-      }
-      
-      return qs.map(mq => mq.id === questId ? { ...mq, categories: mq.categories.filter(c => c.id !== categoryId) } : mq);
-    });
+    const q = mainQuests.find((x: MainQuest) => x.id === questId);
+    if (!q) return;
+
+    const wasQuestComp = isQuestComplete(q);
+    const remainingCats = q.categories.filter((c: QuestCategory) => c.id !== categoryId);
+    const isQuestNowComp = remainingCats.length > 0 && remainingCats.every((cat: QuestCategory) => isCategoryComplete(cat));
+    
+    let bonus: { amount: number; type: string; key: string; } | null = null;
+
+    if (!wasQuestComp && isQuestNowComp) {
+      const bonusValue = getQuestBonusAmount(remainingCats.length);
+      bonus = { amount: bonusValue, type: `quest-catdel-bonus-${questId}`, key: `quest-bonus-${questId}` };
+    }
+
+    setMainQuests((qs: MainQuest[]) => qs.map((mq: MainQuest) => mq.id === questId ? { ...mq, categories: remainingCats } : mq));
+
+    if (bonus) {
+      applyGlobalXPChange(bonus.amount, bonus.type, { [bonus.key]: bonus.amount });
+    }
   };
 
-  const toggleNode = (id: string) => setExpandedNodes(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleNode = (id: string) => setExpandedNodes((p: Set<string>) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const handleDeleteQuest = (id: string) => setQuestToDelete(id);
 
-  // Timer Handlers
-  const toggleTimer = () => {
-    if (isTimerActive) {
-      // Pause
-      setIsTimerActive(false);
-      setTimerEndTime(null);
-    } else {
-      // Start
-      const endTime = Date.now() + timerTimeLeft * 1000;
-      setTimerEndTime(endTime);
-      setIsTimerActive(true);
-    }
-  };
-
-  const resetTimer = () => {
-    setIsTimerActive(false);
-    setTimerEndTime(null);
-    setTimerTimeLeft(timerMode === 'work' ? workDuration : breakDuration);
-  };
-
-  const switchTimerMode = (mode: 'work' | 'break') => {
-    setTimerMode(mode);
-    setIsTimerActive(false);
-    setTimerEndTime(null);
-    setTimerTimeLeft(mode === 'work' ? workDuration : breakDuration);
-  };
-
-  const handleAdjustTimer = (change: number) => {
-    // Only allow adjusting the preset, not the running timer time, as per original logic pattern.
-    // However, if we are inactive, we update the display.
-    if (timerMode === 'work') {
-      const n = Math.max(60, workDuration + change);
-      setWorkDuration(n);
-      if (!isTimerActive) setTimerTimeLeft(n);
-    } else {
-      const n = Math.max(60, breakDuration + change);
-      setBreakDuration(n);
-      if (!isTimerActive) setTimerTimeLeft(n);
-    }
-  };
+  // Timer handlers now come from useTimer hook
 
   // AI Assistant Handlers
   const handleAiCreateTask = (task: Partial<Task>) => {
-    setTasks(prev => [{
+    setTasks((prev: Task[]) => [{
       id: crypto.randomUUID(),
       title: task.title || 'New Assignment',
       description: task.description || '',
@@ -742,15 +521,15 @@ const App: React.FC = () => {
     }, ...prev]);
   };
 
-  const handleAiCreateQuest = (title: string, categories: any[] = []) => {
+  const handleAiCreateQuest = (title: string, categories: { title: string; tasks: { name: string; difficulty?: Difficulty; skillCategory?: SkillCategory; description?: string }[] }[] = []) => {
     const newId = crypto.randomUUID();
     
-    let questCategories: any[] = [];
+    let questCategories: QuestCategory[] = [];
     if (categories && categories.length > 0) {
-         questCategories = categories.map((c: any) => ({
+         questCategories = categories.map((c) => ({
             id: crypto.randomUUID(),
             title: c.title,
-            tasks: c.tasks.map((t: any) => ({
+            tasks: c.tasks.map((t) => ({
                 task_id: crypto.randomUUID(),
                 name: t.name,
                 status: 'pending',
@@ -761,12 +540,12 @@ const App: React.FC = () => {
         }));
     }
 
-    setMainQuests(p => [{ id: newId, title: title, categories: questCategories }, ...p]);
-    setExpandedNodes(prev => new Set(prev).add(newId));
+    setMainQuests((p: MainQuest[]) => [{ id: newId, title: title, categories: questCategories }, ...p]);
+    setExpandedNodes((prev: Set<string>) => new Set(prev).add(newId));
   };
 
   const handleAiCreateChallenge = (challenge: Partial<FriendChallenge>) => {
-    setChallenges(prev => [...prev, {
+    setChallenges((prev: FriendChallenge[]) => [...prev, {
       id: crypto.randomUUID(),
       title: challenge.title || 'New Challenge',
       description: challenge.description || 'Defeat your opponent.',
@@ -777,10 +556,10 @@ const App: React.FC = () => {
     }]);
   };
   
-  const handleManualCreateChallenge = (data: any) => {
+  const handleManualCreateChallenge = (data: { title: string; description: string; partnerIds: string[]; categories: ChallengeQuestCategory[]; mode: ChallengeModeType }) => {
     if (editingChallenge) {
       // Update existing challenge
-      setChallenges(prev => prev.map(c => c.id === editingChallenge.id ? {
+      setChallenges((prev: FriendChallenge[]) => prev.map((c: FriendChallenge) => c.id === editingChallenge.id ? {
         ...c,
         title: data.title,
         description: data.description || '',
@@ -800,7 +579,7 @@ const App: React.FC = () => {
         categories: data.categories || [],
         timeLeft: '7d' // Default duration
       };
-      setChallenges(prev => [...prev, newChallenge]);
+      setChallenges((prev: FriendChallenge[]) => [...prev, newChallenge]);
     }
   };
 
@@ -811,18 +590,18 @@ const App: React.FC = () => {
 
   // Handle challenge task completion
   const handleToggleChallengeTask = (challengeId: string, categoryId: string, taskId: string) => {
-    setChallenges(prev => prev.map(challenge => {
+    setChallenges((prev: FriendChallenge[]) => prev.map((challenge: FriendChallenge) => {
       if (challenge.id !== challengeId) return challenge;
       if (challenge.completedBy) return challenge; // Already completed, no changes
 
       const isCoop = challenge.mode === 'coop';
 
       // Toggle the task status based on mode
-      const updatedCategories = challenge.categories.map(cat => {
+      const updatedCategories = challenge.categories.map((cat: ChallengeQuestCategory) => {
         if (cat.id !== categoryId) return cat;
         return {
           ...cat,
-          tasks: cat.tasks.map(task => {
+          tasks: cat.tasks.map((task: ChallengeQuestTask) => {
             if (task.task_id !== taskId) return task;
             
             if (isCoop) {
@@ -832,11 +611,11 @@ const App: React.FC = () => {
                 ...task, 
                 status: newStatus,
                 completedBy: newStatus === 'completed' ? user.name : undefined
-              };
+              } as ChallengeQuestTask;
             } else {
               // Competitive: toggle myStatus only
               const newStatus = task.myStatus === 'completed' ? 'pending' : 'completed';
-              return { ...task, myStatus: newStatus };
+              return { ...task, myStatus: newStatus } as ChallengeQuestTask;
             }
           })
         };
@@ -846,8 +625,8 @@ const App: React.FC = () => {
 
       // Check if all tasks are now completed
       const allTasksCompleted = isCoop
-        ? updatedCategories.every(cat => cat.tasks.every(task => task.status === 'completed'))
-        : updatedCategories.every(cat => cat.tasks.every(task => task.myStatus === 'completed'));
+        ? updatedCategories.every((cat: ChallengeQuestCategory) => cat.tasks.every((task: ChallengeQuestTask) => task.status === 'completed'))
+        : updatedCategories.every((cat: ChallengeQuestCategory) => cat.tasks.every((task: ChallengeQuestTask) => task.myStatus === 'completed'));
 
       // If all tasks completed, award XP and mark challenge as complete
       if (allTasksCompleted && !challenge.completedBy) {
@@ -858,8 +637,8 @@ const App: React.FC = () => {
           applyGlobalXPChange(challengeXP, `challenge-${challengeId}`, { [`challenge-${challengeId}`]: challengeXP });
           
           // Award skill XP only for tasks completed by this user
-          updatedCategories.forEach(cat => {
-            cat.tasks.forEach(task => {
+          updatedCategories.forEach((cat: ChallengeQuestCategory) => {
+            cat.tasks.forEach((task: ChallengeQuestTask) => {
               if (task.completedBy === user.name && task.status === 'completed') {
                 const taskXP = calculateXP({ difficulty: task.difficulty } as any).total;
                 const skill = user.skills[task.skillCategory];
@@ -898,7 +677,7 @@ const App: React.FC = () => {
   };
 
   const navItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dash' }, 
+    { id: 'dashboard', icon: CheckSquare, label: 'Tasks' }, 
     { id: 'quests', icon: Map, label: 'Quests' }, 
     { id: 'tools', icon: BookOpen, label: 'Tools' }, 
     { id: 'friends', icon: Users, label: 'Friends' },
@@ -924,25 +703,26 @@ const App: React.FC = () => {
            </button>
         </div>
       </nav>
+      {/* Main Layout */}
       <main className="flex-1 p-6 lg:p-14 pb-32 pt-20 md:pt-6 overflow-y-auto">
         {activeTab === 'profile' && (
           <ProfileView 
             user={user} 
-            handleUpdateIdentity={(i:any)=>setUser(p=>({...p,identity:i}))} 
-            handleAddGoal={(t:any)=>setUser(p=>({...p,goals:[{id:crypto.randomUUID(),title:t,completed:false},...p.goals]}))} 
-            handleToggleGoal={(id:any)=>setUser(p=>({...p,goals:p.goals.map(g=>g.id===id?{...g,completed:!g.completed}:g)}))} 
-            handleDeleteGoal={(id:any)=>setUser(p=>({...p,goals:p.goals.filter(g=>g.id!==id)}))} 
+            handleUpdateIdentity={(i: string) => setUser((p: UserProfile) => ({ ...p, identity: i }))} 
+            handleAddGoal={(t: string) => setUser((p: UserProfile) => ({ ...p, goals: [{ id: crypto.randomUUID(), title: t, completed: false }, ...p.goals] }))} 
+            handleToggleGoal={(id: string) => setUser((p: UserProfile) => ({ ...p, goals: p.goals.map((g: Goal) => g.id === id ? { ...g, completed: !g.completed } : g) }))} 
+            handleDeleteGoal={(id: string) => setUser((p: UserProfile) => ({ ...p, goals: p.goals.filter((g: Goal) => g.id !== id) }))} 
             levelProgress={getLevelProgress(user.totalXP, user.level)} 
             flashKey={flashKey} 
             layout={user.layout || DEFAULT_LAYOUT} 
-            onUpdateLayout={(l:any)=>setUser(p=>({...p,layout:l}))} 
+            onUpdateLayout={(l: ProfileLayout) => setUser((p: UserProfile) => ({ ...p, layout: l }))} 
             onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
-        {activeTab === 'dashboard' && <DashboardView user={user} tasks={tasks} handleCompleteTask={handleCompleteTask} handleUncompleteTask={handleUncompleteTask} handleDeleteTask={(id:any)=>setTasks(t=>t.filter(x=>x.id!==id))} handleEditTask={(t:any)=>{setEditingTask(t);setIsModalOpen(true);}} handleSaveTemplate={handleSaveTemplate} setIsModalOpen={setIsModalOpen} setEditingTask={setEditingTask} levelProgress={getLevelProgress(user.totalXP, user.level)} popups={xpPopups} flashKey={flashKey} />}
+        {activeTab === 'dashboard' && <DashboardView user={user} tasks={tasks} handleCompleteTask={handleCompleteTask} handleUncompleteTask={handleUncompleteTask} handleDeleteTask={(id: string) => setTasks((t: Task[]) => t.filter((x: Task) => x.id !== id))} handleEditTask={(t: Task) => { setEditingTask(t); setIsModalOpen(true); }} handleSaveTemplate={handleSaveTemplate} setIsModalOpen={setIsModalOpen} setEditingTask={setEditingTask} levelProgress={getLevelProgress(user.totalXP, user.level)} popups={xpPopups} flashKey={flashKey} />}
         {activeTab === 'quests' && <QuestsView mainQuests={mainQuests} expandedNodes={expandedNodes} toggleNode={toggleNode} setTextModalConfig={setTextModalConfig} setQuestTaskConfig={setQuestTaskConfig} handleToggleQuestTask={handleToggleQuestTask} handleQuestOracle={handleQuestOracle} oraclingQuestId={oraclingQuestId} handleDeleteQuest={handleDeleteQuest} handleDeleteCategory={handleDeleteCategory} handleDeleteQuestTask={handleDeleteQuestTask} handleSaveTemplate={handleSaveTemplate} popups={xpPopups} />}
-        {activeTab === 'tools' && <ToolsView switchTimerMode={switchTimerMode} timerMode={timerMode} formatTime={(s:any)=>`${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`} timerTimeLeft={timerTimeLeft} toggleTimer={toggleTimer} isTimerActive={isTimerActive} resetTimer={resetTimer} handleAdjustTimer={handleAdjustTimer} />}
-        {activeTab === 'friends' && <FriendsView user={user} friends={friends} challenges={challenges} onCreateChallenge={() => setIsChallengeModalOpen(true)} onEditChallenge={handleEditChallenge} onDeleteChallenge={(id) => setChallengeToDelete(id)} onToggleChallengeTask={handleToggleChallengeTask} />}
+        {activeTab === 'tools' && <ToolsView switchTimerMode={timer.switchMode} timerMode={timer.mode} formatTime={(s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`} timerTimeLeft={timer.timeLeft} toggleTimer={timer.toggleTimer} isTimerActive={timer.isActive} resetTimer={timer.resetTimer} handleAdjustTimer={timer.adjustTimer} />}
+        {activeTab === 'friends' && <FriendsView user={user} friends={friends} challenges={challenges} onCreateChallenge={() => setIsChallengeModalOpen(true)} onEditChallenge={handleEditChallenge} onDeleteChallenge={(id: string) => setChallengeToDelete(id)} onToggleChallengeTask={handleToggleChallengeTask} />}
         {activeTab === 'assistant' && <AssistantView user={user} tasks={tasks} quests={mainQuests} friends={friends} challenges={challenges} onAddTask={handleAiCreateTask} onAddQuest={handleAiCreateQuest} onAddChallenge={handleAiCreateChallenge} messages={aiMessages} setMessages={setAiMessages} />}
       </main>
 
@@ -985,7 +765,7 @@ const App: React.FC = () => {
        onClose={() => setQuestToDelete(null)}
        onConfirm={() => {
            if (questToDelete) {
-               setMainQuests(p => p.filter(q => q.id !== questToDelete));
+               setMainQuests((p: MainQuest[]) => p.filter((q: MainQuest) => q.id !== questToDelete));
                setQuestToDelete(null);
            }
        }}
@@ -998,7 +778,7 @@ const App: React.FC = () => {
        onClose={() => setChallengeToDelete(null)}
        onConfirm={() => {
            if (challengeToDelete) {
-               setChallenges(p => p.filter(c => c.id !== challengeToDelete));
+               setChallenges((p: FriendChallenge[]) => p.filter((c: FriendChallenge) => c.id !== challengeToDelete));
                setChallengeToDelete(null);
            }
        }}
@@ -1010,50 +790,50 @@ const App: React.FC = () => {
         isOpen={isModalOpen || questTaskConfig.isOpen} 
         onClose={()=>{setIsModalOpen(false); setQuestTaskConfig({isOpen:false});}} 
         isQuestTask={questTaskConfig.isOpen}
-        onSubmit={(d)=>{ 
+        onSubmit={(d: any)=>{ 
             if (questTaskConfig.isOpen) {
-                setMainQuests(qs => {
-                    const q = qs.find(x => x.id === questTaskConfig.questId);
-                    const c = q?.categories.find(x => x.id === questTaskConfig.categoryId);
+                setMainQuests((qs: MainQuest[]) => {
+                    const q = qs.find((x: MainQuest) => x.id === questTaskConfig.questId);
+                    const c = q?.categories.find((x: QuestCategory) => x.id === questTaskConfig.categoryId);
                     if (!q || !c) return qs;
 
                     if (questTaskConfig.editingTask) {
-                        return qs.map(mq => mq.id === questTaskConfig.questId ? { ...mq, categories: mq.categories.map(cat => cat.id === questTaskConfig.categoryId ? { ...cat, tasks: cat.tasks.map(t => t.task_id === questTaskConfig.editingTask?.task_id ? { ...t, name: d.title, difficulty: d.difficulty, skillCategory: d.skillCategory, description: d.description } : t) } : cat) } : mq);
+                        return qs.map((mq: MainQuest) => mq.id === questTaskConfig.questId ? { ...mq, categories: mq.categories.map((cat: QuestCategory) => cat.id === questTaskConfig.categoryId ? { ...cat, tasks: cat.tasks.map((t: QuestTask) => t.task_id === questTaskConfig.editingTask?.task_id ? { ...t, name: d.title, difficulty: d.difficulty, skillCategory: d.skillCategory, description: d.description } : t) } : cat) } : mq);
                     } else {
                         if (isCategoryComplete(c)) applyGlobalXPChange(-20, `sec-add-revoke-${c.id}`, { [`section-bonus-${c.id}`]: -20 });
                         if (isQuestComplete(q)) {
                             const bonus = getQuestBonusAmount(q.categories.length);
                             applyGlobalXPChange(-bonus, `quest-add-revoke-${q.id}`, { [`quest-bonus-${q.id}`]: -bonus });
                         }
-                        return qs.map(mq => mq.id === questTaskConfig.questId ? { ...mq, categories: mq.categories.map(cat => cat.id === questTaskConfig.categoryId ? { ...cat, tasks: [...cat.tasks, { task_id: crypto.randomUUID(), name: d.title, status: 'pending', difficulty: d.difficulty, skillCategory: d.skillCategory, description: d.description }] } : cat) } : mq);
+                        return qs.map((mq: MainQuest) => mq.id === questTaskConfig.questId ? { ...mq, categories: mq.categories.map((cat: QuestCategory) => cat.id === questTaskConfig.categoryId ? { ...cat, tasks: [...cat.tasks, { task_id: crypto.randomUUID(), name: d.title, status: 'pending', difficulty: d.difficulty, skillCategory: d.skillCategory, description: d.description } as QuestTask] } : cat) } : mq);
                     }
                 });
                 setQuestTaskConfig({isOpen:false});
             } else {
-                if(editingTask) setTasks(p=>p.map(t=>t.id===editingTask.id?{...t,...d}:t)); 
-                else setTasks(p=>[{id:crypto.randomUUID(),...d,completed:false,streak:0,lastCompletedDate:null,createdAt:new Date().toISOString()},...p]); 
+                if(editingTask) setTasks((p: Task[])=>p.map((t: Task)=>t.id===editingTask.id?{...t,...d}:t)); 
+                else setTasks((p: Task[])=>[{id:crypto.randomUUID(),...d,completed:false,streak:0,lastCompletedDate:null,createdAt:new Date().toISOString()},...p]); 
                 setIsModalOpen(false); 
             }
         }} 
         editingTask={questTaskConfig.editingTask ? { id: questTaskConfig.editingTask.task_id, title: questTaskConfig.editingTask.name, description: questTaskConfig.editingTask.description || '', difficulty: questTaskConfig.editingTask.difficulty, skillCategory: questTaskConfig.editingTask.skillCategory, isHabit: false, completed: false, streak: 0, lastCompletedDate: null, createdAt: '' } : editingTask} 
-        templates={user.templates} onSaveTemplate={(data)=>setUser(p=>({...p,templates:[...p.templates,{id:crypto.randomUUID(),...data}]}))} onDeleteTemplate={(id)=>setUser(p=>({...p,templates:p.templates.filter(t=>t.id!==id)}))} 
+        templates={user.templates} onSaveTemplate={(data: any)=>setUser((p: UserProfile)=>({...p,templates:[...p.templates,{id:crypto.randomUUID(),...data}]}))} onDeleteTemplate={(id: string)=>setUser((p: UserProfile)=>({...p,templates:p.templates.filter((t: TaskTemplate)=>t.id!==id)}))} 
       />
 
       <SimpleInputModal 
         isOpen={textModalConfig.isOpen} onClose={()=>setTextModalConfig({isOpen:false,type:null})} 
         title={textModalConfig.type === 'edit-quest' ? 'Modify Quest Identifier' : textModalConfig.type === 'edit-category' ? 'Modify Section Title' : `Deploy New ${textModalConfig.type === 'category' ? 'Section' : 'Main Quest'}`} 
         placeholder="Enter identifier..." initialValue={textModalConfig.initialValue}
-        onSubmit={(v)=>{ 
+        onSubmit={(v: string)=>{ 
             if(textModalConfig.type==='quest') {
                 const newId = crypto.randomUUID();
-                setMainQuests(p=>[{id: newId, title:v, categories:[]},...p]); 
-                setExpandedNodes(prev => new Set(prev).add(newId));
+                setMainQuests((p: MainQuest[])=>[{id: newId, title:v, categories:[]},...p]); 
+                setExpandedNodes((prev: Set<string>) => new Set(prev).add(newId));
             } else if (textModalConfig.type === 'edit-quest') {
-                setMainQuests(p => p.map(q => q.id === textModalConfig.parentId ? { ...q, title: v } : q));
+                setMainQuests((p: MainQuest[]) => p.map((q: MainQuest) => q.id === textModalConfig.parentId ? { ...q, title: v } : q));
             } else if (textModalConfig.type === 'edit-category') {
-                setMainQuests(p => p.map(q => q.id === textModalConfig.parentId ? { ...q, categories: q.categories.map(c => c.id === textModalConfig.categoryId ? { ...c, title: v } : c) } : q));
+                setMainQuests((p: MainQuest[]) => p.map((q: MainQuest) => q.id === textModalConfig.parentId ? { ...q, categories: q.categories.map((c: QuestCategory) => c.id === textModalConfig.categoryId ? { ...c, title: v } : c) } : q));
             } else {
-                setMainQuests(p=>p.map(mq=>{
+                setMainQuests((p: MainQuest[])=>p.map((mq: MainQuest)=>{
                     if (mq.id===textModalConfig.parentId) {
                         if (isQuestComplete(mq)) {
                             const bonus = getQuestBonusAmount(mq.categories.length);

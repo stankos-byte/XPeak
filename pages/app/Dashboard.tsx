@@ -71,7 +71,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
       <header className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
         <div>
-          <h2 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Active Quests</h2>
+          <h2 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Active Tasks</h2>
           <p className="text-secondary font-medium tracking-wide">{activeTasks.length} objectives currently deployed.</p>
         </div>
         <button 
@@ -79,7 +79,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           className="flex items-center gap-2 bg-primary hover:bg-cyan-400 text-background px-6 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 w-full md:w-auto justify-center"
         >
           <Plus size={20} strokeWidth={3} />
-          Initiate Quest
+          Add Task
         </button>
       </header>
 
@@ -108,7 +108,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       <section className="animate-in slide-in-from-bottom-4 duration-700 delay-200">
         <div className="flex items-center gap-3 mb-6 px-1">
           <History size={18} className="text-secondary" />
-          <h2 className="text-lg font-black text-secondary uppercase tracking-widest italic">Mission History</h2>
+          <h2 className="text-lg font-black text-secondary uppercase tracking-widest italic">Task History</h2>
         </div>
         
         <div className="space-y-3">
@@ -162,7 +162,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                    </span>
                    <button 
                      onClick={() => handleDeleteTask(task.id)}
-                     className="p-2 text-secondary hover:text-red-400 bg-background/50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                     className="p-2 text-secondary hover:text-red-400 bg-background/50 rounded-lg transition-all"
                      title="Purge Record"
                    >
                      <Trash2 size={16} />

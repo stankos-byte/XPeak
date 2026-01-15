@@ -1,11 +1,11 @@
 import React, { useEffect } from 'react';
-import { Swords, Zap, Target, TrendingUp, Sparkles, ArrowRight, Play, Facebook, Twitter, Instagram, Linkedin, Youtube, BarChart3, Globe, Download, Users } from 'lucide-react';
+import { Swords, Zap, Target, TrendingUp, Sparkles, ArrowRight, BarChart3, Globe, Download } from 'lucide-react';
 
 interface LandingViewProps {
   onGetStarted?: () => void;
 }
 
-const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
+const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }: LandingViewProps) => {
   // Reset theme attribute when landing page mounts to prevent app theme from affecting it
   useEffect(() => {
     document.documentElement.removeAttribute('data-theme');
@@ -36,9 +36,9 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
       icon: BarChart3,
       title: 'Multiple Skill Trees',
       description: 'Track progress across Physical, Mental, Professional, Social & Creative skills.',
-      color: 'from-primary to-blue-600',
-      bgColor: 'bg-primary/10',
-      borderColor: 'border-primary/20',
+      color: 'from-orange-500 to-orange-600',
+      bgColor: 'bg-orange-500/10',
+      borderColor: 'border-orange-500/20',
       buttonText: 'Explore'
     },
     {
@@ -63,67 +63,19 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
 
   return (
     <div className="min-h-screen w-full animate-in fade-in duration-700 bg-gradient-to-b from-background via-background to-surface/20">
-      {/* Header with Logo and Download Button */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b border-secondary/10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary/10 rounded-xl border border-primary/30 shadow-[0_0_20px_rgba(0,225,255,0.2)]">
-              <Swords size={28} className="text-primary" />
-            </div>
-            <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-tighter">
-              XPeak
-            </h1>
-          </div>
-          
-          {onGetStarted && (
-            <button
-              onClick={onGetStarted}
-              className="inline-flex items-center gap-2 bg-primary hover:bg-blue-600 text-white px-6 py-3 rounded-full font-bold text-sm transition-all shadow-lg shadow-primary/30 hover:shadow-primary/50"
-            >
-              <Download size={16} />
-              Download Now
-            </button>
-          )}
-        </div>
-      </header>
-
-
       {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center overflow-hidden pt-20">
+      <section className="relative min-h-screen flex items-center overflow-hidden">
         {/* Background decoration */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-96 h-96 bg-primary rounded-full blur-3xl"></div>
           <div className="absolute top-40 right-20 w-[600px] h-[600px] bg-purple-500 rounded-full blur-3xl"></div>
         </div>
 
-        {/* Halftone Dot Patterns - Brand Graphics */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {/* Top right circular fade */}
-          <div className="absolute top-20 right-10 w-96 h-96 opacity-25">
-            <div className="absolute inset-0" style={{
-              backgroundImage: 'radial-gradient(circle, #3b82f6 2px, transparent 2px)',
-              backgroundSize: '24px 24px',
-              maskImage: 'radial-gradient(circle, black 20%, transparent 70%)',
-              WebkitMaskImage: 'radial-gradient(circle, black 20%, transparent 70%)'
-            }}></div>
-          </div>
-          
-          {/* Bottom left corner fade */}
-          <div className="absolute bottom-10 left-10 w-96 h-96 opacity-20">
-            <div className="absolute inset-0" style={{
-              backgroundImage: 'radial-gradient(circle, #64748b 2px, transparent 2px)',
-              backgroundSize: '24px 24px',
-              maskImage: 'radial-gradient(circle at bottom left, black 30%, transparent 75%)',
-              WebkitMaskImage: 'radial-gradient(circle at bottom left, black 30%, transparent 75%)'
-            }}></div>
-          </div>
-        </div>
-
-        <div className="relative z-10 max-w-7xl mx-auto px-6 py-20 w-full">
+        <div className="relative z-10 max-w-7xl mx-auto px-6 py-12 w-full">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             {/* Left Side - Text Content */}
             <div>
-<h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white mb-6 leading-tight">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white mb-6 leading-tight">
                 Empower Your <br />
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
                   Personal Growth
@@ -134,7 +86,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
               {onGetStarted && (
                 <button
                   onClick={onGetStarted}
-                  className="group inline-flex items-center gap-3 bg-gradient-to-r from-primary to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-4 rounded-full font-bold text-sm transition-all shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:scale-105"
+                  className="group inline-flex items-center gap-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-8 py-4 rounded-full font-bold text-sm transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105"
                 >
                   <Download size={20} />
                   <span>Download App</span>
@@ -148,7 +100,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
                   <div className="flex -space-x-2">
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-cyan-500 border-2 border-background"></div>
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 border-2 border-background"></div>
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-blue-400 border-2 border-background"></div>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-yellow-500 border-2 border-background"></div>
                   </div>
                   <div>
                     <p className="text-white font-bold text-lg">3.1M</p>
@@ -176,62 +128,54 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
               </div>
             </div>
 
-            {/* Right Side - Laptop & Phone Mockup */}
+            {/* Right Side - Phone Mockup */}
             <div className="relative hidden lg:flex items-center justify-center">
               <div className="relative">
-                {/* Background glow effects */}
-                <div className="absolute -inset-10 bg-gradient-to-br from-primary/20 to-purple-500/20 rounded-full blur-3xl"></div>
+                {/* Glow effect */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-purple-500/30 rounded-[3rem] blur-3xl"></div>
                 
-                {/* Laptop Mockup */}
-                <div className="relative">
-                  {/* Laptop screen */}
-                  <div className="relative w-[500px] h-[320px] bg-gradient-to-br from-gray-800 to-gray-900 rounded-t-2xl border-4 border-gray-700 shadow-2xl overflow-hidden">
-                    {/* Screen bezel */}
-                    <div className="absolute inset-2 bg-surface rounded-lg overflow-hidden">
-                      {/* Placeholder for screenshot - will be replaced later */}
-                      <div className="w-full h-full bg-gradient-to-br from-surface via-background to-surface flex items-center justify-center">
-                        <div className="text-center">
-                          <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                            <Sparkles size={48} className="text-primary" />
-                          </div>
-                          <p className="text-white font-bold text-lg">XPeak Dashboard</p>
-                          <p className="text-secondary/60 text-sm">Screenshot placeholder</p>
+                {/* Phone mockup */}
+                <div className="relative w-80 h-[600px] bg-gradient-to-br from-purple-400 via-purple-300 to-blue-300 rounded-[3rem] p-8 shadow-2xl">
+                  <div className="w-full h-full bg-gradient-to-b from-surface to-background rounded-[2.5rem] p-6 flex flex-col">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-cyan-500"></div>
+                        <div>
+                          <p className="text-white text-xs font-bold">Alex Hunter</p>
+                          <p className="text-secondary/60 text-[10px]">Master Achiever</p>
                         </div>
+                      </div>
+                      <button className="p-2 bg-surface rounded-full">
+                        <div className="w-4 h-4 rounded-full bg-primary/20"></div>
+                      </button>
+                    </div>
+                    
+                    {/* Total XP Display */}
+                    <div className="bg-gradient-to-br from-surface to-background border border-primary/20 rounded-2xl p-6 mb-4">
+                      <p className="text-4xl font-black text-white mb-2">78,585 XP</p>
+                      <p className="text-primary text-sm font-bold">Total Experience</p>
+                    </div>
+                    
+                    {/* Skill Category Cards */}
+                    <div className="space-y-3 flex-1">
+                      <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl p-4 shadow-lg">
+                        <p className="text-white/80 text-xs mb-1">Professional • Level 12</p>
+                        <p className="text-white text-xl font-bold">5,760 XP</p>
+                      </div>
+                      <div className="bg-gradient-to-r from-pink-500 to-rose-500 rounded-xl p-4 shadow-lg">
+                        <p className="text-white/80 text-xs mb-1">Physical • Level 9</p>
+                        <p className="text-white text-xl font-bold">3,750 XP</p>
                       </div>
                     </div>
                     
-                    {/* Webcam notch */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-1 bg-gray-800 rounded-b-lg"></div>
-                  </div>
-                  
-                  {/* Laptop base */}
-                  <div className="w-[520px] h-3 bg-gradient-to-b from-gray-700 to-gray-800 rounded-b-xl -ml-2.5"></div>
-                  <div className="w-[560px] h-1.5 bg-gray-800 rounded-b-lg -ml-[30px] shadow-lg"></div>
-                </div>
-                
-                {/* Phone Mockup - positioned at bottom right */}
-                <div className="absolute -right-8 bottom-8">
-                  {/* Phone glow */}
-                  <div className="absolute inset-0 bg-primary/30 rounded-[2.5rem] blur-2xl"></div>
-                  
-                  {/* Phone frame */}
-                  <div className="relative w-[180px] h-[360px] bg-gradient-to-br from-gray-800 to-gray-900 rounded-[2.5rem] p-2 shadow-2xl">
-                    {/* Phone screen */}
-                    <div className="w-full h-full bg-surface rounded-[1.8rem] overflow-hidden">
-                      {/* Placeholder for screenshot - will be replaced later */}
-                      <div className="w-full h-full bg-gradient-to-b from-surface to-background flex items-center justify-center p-6">
-                        <div className="text-center">
-                          <div className="w-16 h-16 mx-auto mb-3 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                            <Target size={32} className="text-primary" />
-                          </div>
-                          <p className="text-white font-bold text-xs">Mobile App</p>
-                          <p className="text-secondary/60 text-[10px]">Screenshot placeholder</p>
+                    {/* Quick Actions */}
+                    <div className="flex gap-2 mt-4">
+                      {[1,2,3,4,5].map((i) => (
+                        <div key={i} className="w-10 h-10 rounded-full bg-surface border border-secondary/20 flex items-center justify-center">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary/20 to-purple-500/20"></div>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                    
-                    {/* Notch */}
-                    <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-6 bg-gray-900 rounded-b-2xl"></div>
                   </div>
                 </div>
               </div>
@@ -241,14 +185,8 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
       </section>
 
       {/* Platform Logos Section */}
-      <section className="relative max-w-7xl mx-auto px-6 py-12 border-t border-secondary/10">
-        {/* Uniform dot grid pattern */}
-        <div className="absolute inset-0 pointer-events-none opacity-8" style={{
-          backgroundImage: 'radial-gradient(circle, #64748b 2px, transparent 2px)',
-          backgroundSize: '24px 24px'
-        }}></div>
-
-        <div className="relative flex flex-wrap items-center justify-center gap-8 md:gap-12 opacity-60">
+      <section className="max-w-7xl mx-auto px-6 py-12 border-t border-secondary/10">
+        <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12 opacity-60">
           <span className="text-secondary font-bold text-sm">ProductHunt</span>
           <span className="text-secondary font-bold text-sm">TechCrunch</span>
           <span className="text-secondary font-bold text-sm">AppStore</span>
@@ -261,17 +199,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
       </section>
 
       {/* Features Section */}
-      <section className="relative max-w-7xl mx-auto px-6 py-20">
-        {/* Dot pattern decoration */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-10 right-20 w-80 h-80 opacity-15" style={{
-            backgroundImage: 'radial-gradient(circle, #3b82f6 2px, transparent 2px)',
-            backgroundSize: '24px 24px',
-            maskImage: 'radial-gradient(circle, black 40%, transparent 80%)',
-            WebkitMaskImage: 'radial-gradient(circle, black 40%, transparent 80%)'
-          }}></div>
-        </div>
-
+      <section className="max-w-7xl mx-auto px-6 py-20">
         <div className="text-center mb-16">
           <div className="inline-block px-4 py-2 bg-surface/80 border border-primary/30 rounded-full mb-4">
             <span className="text-primary text-xs font-bold uppercase tracking-wider">Highlights</span>
@@ -335,8 +263,8 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
             </div>
           </div>
 
-          {/* Multiple Categories - Blue Card */}
-          <div className="bg-gradient-to-br from-primary to-blue-600 rounded-3xl p-8 relative overflow-hidden group hover:shadow-2xl hover:shadow-primary/30 transition-all">
+          {/* Multiple Categories - Orange Card */}
+          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-3xl p-8 relative overflow-hidden group hover:shadow-2xl hover:shadow-orange-500/30 transition-all">
             <div className="relative z-10 flex flex-col h-full">
               <h3 className="text-xl font-bold text-white mb-3">
                 {features[2].title}
@@ -353,7 +281,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
                     <p className="text-white text-xs font-medium">Mental</p>
                   </div>
                   <div className="flex-1 bg-white/20 backdrop-blur-sm rounded-xl p-4 flex flex-col items-center justify-center">
-                    <Users size={24} className="text-white mb-1" />
+                    <Globe size={24} className="text-white mb-1" />
                     <p className="text-white text-xs font-medium">Social</p>
                   </div>
                 </div>
@@ -404,7 +332,8 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
                 <div className="w-20 h-20 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border-4 border-white/30">
                   <Sparkles size={32} className="text-white" />
                 </div>
-                <div className="w-16 h-16 bg-blue-400 rounded-full flex items-center justify-center">`r`n                  <Zap size={32} className="text-purple-600" />
+                <div className="w-16 h-16 bg-orange-400 rounded-full flex items-center justify-center">
+                  <Zap size={32} className="text-purple-600" />
                 </div>
               </div>
             </div>
@@ -414,26 +343,10 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
 
       {/* CTA Section */}
       <section className="max-w-5xl mx-auto px-6 py-20">
-        <div className="bg-gradient-to-br from-primary/10 via-purple-500/10 to-pink-500/10 border border-primary/20 rounded-3xl p-12 md:p-16 text-center relative overflow-hidden pt-20">
+        <div className="bg-gradient-to-br from-primary/10 via-purple-500/10 to-pink-500/10 border border-primary/20 rounded-3xl p-12 md:p-16 text-center relative overflow-hidden">
           <div className="absolute inset-0 opacity-30">
             <div className="absolute top-0 left-1/4 w-64 h-64 bg-primary rounded-full blur-3xl"></div>
             <div className="absolute bottom-0 right-1/4 w-64 h-64 bg-purple-500 rounded-full blur-3xl"></div>
-          </div>
-
-          {/* Dot pattern overlay */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-10 right-10 w-64 h-64 opacity-20" style={{
-              backgroundImage: 'radial-gradient(circle, #3b82f6 2px, transparent 2px)',
-              backgroundSize: '24px 24px',
-              maskImage: 'radial-gradient(circle, black 35%, transparent 75%)',
-              WebkitMaskImage: 'radial-gradient(circle, black 35%, transparent 75%)'
-            }}></div>
-            <div className="absolute bottom-10 left-10 w-64 h-64 opacity-15" style={{
-              backgroundImage: 'radial-gradient(circle, #a855f7 2px, transparent 2px)',
-              backgroundSize: '24px 24px',
-              maskImage: 'radial-gradient(circle, black 35%, transparent 75%)',
-              WebkitMaskImage: 'radial-gradient(circle, black 35%, transparent 75%)'
-            }}></div>
           </div>
           
           <div className="relative z-10">
@@ -449,7 +362,7 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
             {onGetStarted && (
               <button
                 onClick={onGetStarted}
-                className="group inline-flex items-center gap-3 bg-gradient-to-r from-primary to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-10 py-5 rounded-full font-bold text-base transition-all shadow-lg shadow-primary/30 hover:shadow-primary/50 hover:scale-105"
+                className="group inline-flex items-center gap-3 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-10 py-5 rounded-full font-bold text-base transition-all shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 hover:scale-105"
               >
                 <Download size={20} />
                 <span>Get Started Now</span>
@@ -477,25 +390,6 @@ const LandingView: React.FC<LandingViewProps> = ({ onGetStarted }) => {
               <p className="text-secondary/80 text-sm leading-relaxed mb-6">
                 Transform your life into an epic journey. Complete quests, level up your skills, and achieve your goals with gamified productivity.
               </p>
-              
-              {/* Social Media Icons */}
-              <div className="flex gap-3">
-                <a href="#" className="p-2 bg-background border border-secondary/20 rounded-lg hover:border-primary/40 hover:bg-primary/10 transition-all group">
-                  <Facebook size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                </a>
-                <a href="#" className="p-2 bg-background border border-secondary/20 rounded-lg hover:border-primary/40 hover:bg-primary/10 transition-all group">
-                  <Twitter size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                </a>
-                <a href="#" className="p-2 bg-background border border-secondary/20 rounded-lg hover:border-primary/40 hover:bg-primary/10 transition-all group">
-                  <Instagram size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                </a>
-                <a href="#" className="p-2 bg-background border border-secondary/20 rounded-lg hover:border-primary/40 hover:bg-primary/10 transition-all group">
-                  <Linkedin size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                </a>
-                <a href="#" className="p-2 bg-background border border-secondary/20 rounded-lg hover:border-primary/40 hover:bg-primary/10 transition-all group">
-                  <Youtube size={20} className="text-secondary group-hover:text-primary transition-colors" />
-                </a>
-              </div>
             </div>
 
             {/* Product Column */}

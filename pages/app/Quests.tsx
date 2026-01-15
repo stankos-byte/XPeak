@@ -83,14 +83,14 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                     <div className="hidden md:flex items-center gap-2">
                       <button 
                         onClick={(e) => { e.stopPropagation(); setTextModalConfig({ isOpen: true, type: 'edit-quest', parentId: mainQuest.id, initialValue: mainQuest.title }); }}
-                        className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-all opacity-60 hover:opacity-100"
+                        className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-all"
                         title="Edit Quest Identifier"
                       >
                         <Pencil size={20} />
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setTextModalConfig({ isOpen: true, type: 'category', parentId: mainQuest.id }); }}
-                        className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-all opacity-60 hover:opacity-100"
+                        className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-all"
                         title="Add New Section"
                       >
                         <PlusCircle size={20} />
@@ -98,14 +98,14 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleQuestOracle(mainQuest); }}
                         disabled={isOracling}
-                        className={`p-2.5 rounded-xl transition-all border ${isOracling ? 'border-primary text-primary animate-pulse' : 'border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 opacity-60 hover:opacity-100'}`}
+                        className={`p-2.5 rounded-xl transition-all border ${isOracling ? 'border-primary text-primary animate-pulse' : 'border-secondary/20 text-secondary hover:text-primary hover:border-primary/40'}`}
                         title="Summon AI Oracle"
                       >
                         {isOracling ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteQuest(mainQuest.id); }}
-                        className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-red-400 hover:border-red-400/40 transition-all opacity-60 hover:opacity-100"
+                        className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-red-400 hover:border-red-400/40 transition-all"
                         title="Abort Quest Chain"
                       >
                         <Trash2 size={20} />
@@ -177,21 +177,21 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                         <div className="flex items-center gap-1">
                           <button 
                             onClick={() => setTextModalConfig({ isOpen: true, type: 'edit-category', parentId: mainQuest.id, categoryId: category.id, initialValue: category.title })}
-                            className="p-1.5 text-secondary hover:text-primary transition-all opacity-60 hover:opacity-100"
+                            className="p-1.5 text-secondary hover:text-primary transition-all"
                             title="Edit Section Title"
                           >
                             <Pencil size={18} />
                           </button>
                           <button 
                             onClick={() => setQuestTaskConfig({ isOpen: true, questId: mainQuest.id, categoryId: category.id })}
-                            className="p-1.5 text-secondary hover:text-primary transition-all opacity-60 hover:opacity-100"
+                            className="p-1.5 text-secondary hover:text-primary transition-all"
                             title="Add Objective"
                           >
                             <PlusCircle size={18} />
                           </button>
                           <button 
                             onClick={() => handleDeleteCategory(mainQuest.id, category.id)}
-                            className="p-1.5 text-secondary hover:text-red-400 transition-all opacity-60 hover:opacity-100"
+                            className="p-1.5 text-secondary hover:text-red-400 transition-all"
                             title="Purge Section"
                           >
                             <Trash2 size={18} />

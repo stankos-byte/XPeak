@@ -120,7 +120,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md">
       <div className="bg-surface border border-secondary/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden shadow-primary/5">
         <div className="flex items-center justify-between p-5 border-b border-secondary/20 bg-background/40">
-          <h2 className="text-xl font-black text-white uppercase tracking-tighter italic">{editingTask ? 'Modify Quest' : 'New Assignment'}</h2>
+          <h2 className="text-xl font-black text-white uppercase tracking-tighter italic">{editingTask ? 'Modify Task' : 'New Task'}</h2>
           <button onClick={onClose} className="text-secondary hover:text-primary">
             <X size={24} strokeWidth={3} />
           </button>
@@ -129,7 +129,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div className="relative">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest">Quest Descriptor</label>
+              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest">Task Descriptor</label>
               <div className="flex items-center gap-3">
                 <button 
                   type="button"
@@ -190,7 +190,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                     <button 
                       type="button"
                       onClick={() => onDeleteTemplate?.(tpl.id)}
-                      className="p-2 text-secondary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                      className="p-2 text-secondary hover:text-red-400 transition-all"
                     >
                       <Trash2 size={14} />
                     </button>

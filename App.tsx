@@ -5,6 +5,7 @@ import AppLayout from './AppLayout';
 import Signup from './pages/auth/Signup';
 import Login from './pages/auth/Login';
 import { ThemeProvider } from './contexts/ThemeContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -19,23 +20,27 @@ const LandingPage: React.FC = () => {
 // Wrapper component for app routes that need the theme
 const ThemedAppLayout: React.FC = () => {
   return (
-    <ThemeProvider>
-      <AppLayout />
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AppLayout />
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 };
 
 const App: React.FC = () => {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/app" element={<ThemedAppLayout />} />
-        <Route path="/studio" element={<ThemedAppLayout />} />
-      </Routes>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/app" element={<ThemedAppLayout />} />
+          <Route path="/studio" element={<ThemedAppLayout />} />
+        </Routes>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 };
 

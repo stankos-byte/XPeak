@@ -8,10 +8,16 @@ interface CreateChallengeModalProps {
   onClose: () => void;
   friends: Friend[];
   editingChallenge?: FriendChallenge | null;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: { title: string; description: string; partnerIds: string[]; categories: ChallengeQuestCategory[]; mode: ChallengeModeType }) => void;
 }
 
-const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onClose, friends, editingChallenge, onSubmit }) => {
+const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  friends, 
+  editingChallenge, 
+  onSubmit 
+}: CreateChallengeModalProps) => {
   const [challengeType, setChallengeType] = useState<ChallengeModeType>('competitive');
   const [title, setTitle] = useState('');
   const [partnerIds, setPartnerIds] = useState<string[]>([]);
@@ -38,7 +44,7 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
         setPartnerIds(editingChallenge.partnerIds);
         setChallengeType(editingChallenge.mode);
         setCategories(editingChallenge.categories);
-        setExpandedCategories(new Set(editingChallenge.categories.map(c => c.id)));
+        setExpandedCategories(new Set(editingChallenge.categories.map((c: ChallengeQuestCategory) => c.id)));
       } else {
         // Reset form for new challenge
         setTitle('');
@@ -61,9 +67,9 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
   if (!isOpen) return null;
 
   const togglePartner = (friendId: string) => {
-    setPartnerIds(prev => 
+    setPartnerIds((prev: string[]) => 
       prev.includes(friendId)
-        ? prev.filter(id => id !== friendId)
+        ? prev.filter((id: string) => id !== friendId)
         : [...prev, friendId]
     );
   };
@@ -75,14 +81,18 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
       title: newCategoryTitle,
       tasks: []
     };
-    setCategories([...categories, newCategory]);
-    setExpandedCategories(new Set([...expandedCategories, newCategory.id]));
+    setCategories((prev: ChallengeQuestCategory[]) => [...prev, newCategory]);
+    setExpandedCategories((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.add(newCategory.id);
+      return next;
+    });
     setNewCategoryTitle('');
   };
 
   const handleUpdateCategory = () => {
     if (!editingCategory || !newCategoryTitle.trim()) return;
-    setCategories(categories.map(cat => 
+    setCategories((prev: ChallengeQuestCategory[]) => prev.map((cat: ChallengeQuestCategory) => 
       cat.id === editingCategory.id ? { ...cat, title: newCategoryTitle } : cat
     ));
     setEditingCategory(null);
@@ -90,20 +100,24 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
   };
 
   const handleDeleteCategory = (categoryId: string) => {
-    setCategories(categories.filter(cat => cat.id !== categoryId));
-    const newExpanded = new Set(expandedCategories);
-    newExpanded.delete(categoryId);
-    setExpandedCategories(newExpanded);
+    setCategories((prev: ChallengeQuestCategory[]) => prev.filter((cat: ChallengeQuestCategory) => cat.id !== categoryId));
+    setExpandedCategories((prev: Set<string>) => {
+      const next = new Set(prev);
+      next.delete(categoryId);
+      return next;
+    });
   };
 
   const toggleCategory = (categoryId: string) => {
-    const newExpanded = new Set(expandedCategories);
-    if (newExpanded.has(categoryId)) {
-      newExpanded.delete(categoryId);
-    } else {
-      newExpanded.add(categoryId);
-    }
-    setExpandedCategories(newExpanded);
+    setExpandedCategories((prev: Set<string>) => {
+      const next = new Set(prev);
+      if (next.has(categoryId)) {
+        next.delete(categoryId);
+      } else {
+        next.add(categoryId);
+      }
+      return next;
+    });
   };
 
   const handleAddTask = (categoryId: string) => {
@@ -120,7 +134,7 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
         : { myStatus: 'pending' as const, opponentStatus: 'pending' as const }
       )
     };
-    setCategories(categories.map(cat => 
+    setCategories((prev: ChallengeQuestCategory[]) => prev.map((cat: ChallengeQuestCategory) => 
       cat.id === categoryId ? { ...cat, tasks: [...cat.tasks, newTask] } : cat
     ));
     setNewTaskName('');
@@ -132,11 +146,11 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
 
   const handleUpdateTask = () => {
     if (!editingTask || !newTaskName.trim()) return;
-    setCategories(categories.map(cat => 
+    setCategories((prev: ChallengeQuestCategory[]) => prev.map((cat: ChallengeQuestCategory) => 
       cat.id === editingTask.categoryId 
         ? { 
             ...cat, 
-            tasks: cat.tasks.map(task => 
+            tasks: cat.tasks.map((task: ChallengeQuestTask) => 
               task.task_id === editingTask.task.task_id 
                 ? { 
                     ...task, 
@@ -158,8 +172,8 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({ isOpen, onC
   };
 
   const handleDeleteTask = (categoryId: string, taskId: string) => {
-    setCategories(categories.map(cat => 
-      cat.id === categoryId ? { ...cat, tasks: cat.tasks.filter(t => t.task_id !== taskId) } : cat
+    setCategories((prev: ChallengeQuestCategory[]) => prev.map((cat: ChallengeQuestCategory) => 
+      cat.id === categoryId ? { ...cat, tasks: cat.tasks.filter((t: ChallengeQuestTask) => t.task_id !== taskId) } : cat
     ));
   };
 

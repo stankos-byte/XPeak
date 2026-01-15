@@ -66,7 +66,7 @@ export const IdentityWidget: React.FC<{
         {!isCustomizing && (
           <button 
             onClick={() => { if(isEditing) handleUpdateIdentity(temp); setIsEditing(!isEditing); setTimeout(() => inputRef.current?.focus(), 50); }}
-            className={`p-1.5 rounded-lg border transition-all flex items-center gap-2 ${isEditing ? 'bg-primary text-background border-primary' : 'bg-background/50 border-secondary/20 text-secondary opacity-0 group-hover/identity:opacity-100'}`}
+            className={`p-1.5 rounded-lg border transition-all flex items-center gap-2 ${isEditing ? 'bg-primary text-background border-primary' : 'bg-background/50 border-secondary/20 text-secondary'}`}
           >
             {isEditing ? <Save size={14} /> : <Pencil size={14} />}
           </button>
@@ -251,7 +251,7 @@ export const ObjectivesWidget: React.FC<{
                 </button>
                 <span className={`text-sm font-bold uppercase tracking-tight ${goal.completed ? 'line-through text-secondary' : 'text-gray-200'}`}>{goal.title}</span>
               </div>
-              <button onClick={() => handleDeleteGoal(goal.id)} className="text-secondary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all p-1"><Trash2 size={16} /></button>
+              <button onClick={() => handleDeleteGoal(goal.id)} className="text-secondary hover:text-red-400 transition-all p-1"><Trash2 size={16} /></button>
             </div>
           ))}
         </div>
