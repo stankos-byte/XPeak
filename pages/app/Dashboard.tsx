@@ -1,8 +1,10 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Task, UserProfile } from '../../types';
 import { Sparkles, Trophy, Plus, History, CheckCircle2, Trash2 } from 'lucide-react';
 import TaskCard from '../../components/cards/TaskCard';
 import { SKILL_COLORS } from '../../constants';
+import { formatCompletedDate } from '../../utils/date';
 
 interface DashboardViewProps {
   user: UserProfile;
@@ -84,24 +86,30 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       </header>
 
       <div className="space-y-4 mb-16">
-        {activeTasks.map((task: Task) => (
-          <TaskCard 
-            key={task.id} 
-            task={task} 
-            onComplete={handleCompleteTask} 
-            onUncomplete={handleUncompleteTask}
-            onDelete={handleDeleteTask} 
-            onEdit={handleEditTask}
-            onSaveTemplate={handleSaveTemplate}
-            activePopup={popups[task.id]}
-          />
-        ))}
+        <AnimatePresence mode="popLayout">
+          {activeTasks.map((task: Task) => (
+            <TaskCard 
+              key={task.id} 
+              task={task} 
+              onComplete={handleCompleteTask} 
+              onUncomplete={handleUncompleteTask}
+              onDelete={handleDeleteTask} 
+              onEdit={handleEditTask}
+              onSaveTemplate={handleSaveTemplate}
+              activePopup={popups[task.id]}
+            />
+          ))}
+        </AnimatePresence>
         
         {activeTasks.length === 0 && (
-          <div className="text-center py-20 bg-surface/30 rounded-2xl border border-dashed border-secondary/20">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="text-center py-20 bg-surface/30 rounded-2xl border border-dashed border-secondary/20"
+          >
             <Trophy className="mx-auto text-secondary/40 mb-4" size={64} />
             <p className="text-secondary font-black uppercase tracking-widest text-sm">Zone Secured. No active threats.</p>
-          </div>
+          </motion.div>
         )}
       </div>
 
@@ -113,9 +121,12 @@ const DashboardView: React.FC<DashboardViewProps> = ({
         
         <div className="space-y-3">
           {recentHistory.length > 0 ? (
-            recentHistory.map((task: Task) => (
-              <div 
-                key={task.id} 
+            recentHistory.map((task: Task, index: number) => (
+              <motion.div 
+                key={task.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.05 }}
                 className="group flex items-center justify-between p-4 bg-surface/30 border border-secondary/10 rounded-xl hover:border-secondary/30 transition-all opacity-70 hover:opacity-100"
               >
                 <div className="flex items-center gap-4 relative">
@@ -150,7 +161,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                         )}
                       </div>
                       <p className="text-[10px] text-secondary font-black uppercase tracking-widest">
-                        Confirmed: {task.lastCompletedDate ? new Date(task.lastCompletedDate).toLocaleDateString() : 'N/A'}
+                        Confirmed: {formatCompletedDate(task.lastCompletedDate)}
                       </p>
                     </div>
                   </div>
@@ -168,7 +179,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                      <Trash2 size={16} />
                    </button>
                 </div>
-              </div>
+              </motion.div>
             ))
           ) : (
             <div className="text-center py-10 border border-dashed border-secondary/10 rounded-xl">

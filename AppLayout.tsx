@@ -22,6 +22,7 @@ import { calculateXP, calculateLevel, getLevelProgress, calculateChallengeXP } f
 import { storage, STORAGE_KEYS } from './services/localStorage';
 import { useTimer } from './hooks/useTimer';
 import { useHabitSync } from './hooks/useHabitSync';
+import { gameToast } from './components/ui/GameToast';
 import CreateTaskModal from './components/modals/CreateTaskModal';
 import SimpleInputModal from './components/modals/SimpleInputModal';
 import DeleteConfirmModal from './components/modals/DeleteConfirmModal';
@@ -218,6 +219,7 @@ const App: React.FC = () => {
       
       if (amount > 0 && newLevel > prev.level) {
         setShowLevelUp({ show: true, level: newLevel });
+        gameToast.levelUp(newLevel);
         setTimeout(() => setShowLevelUp(null), 3000);
       }
 
@@ -244,6 +246,12 @@ const App: React.FC = () => {
         history: [{ date: new Date().toISOString(), xpGained: amount, taskId: historyId }, ...prev.history]
       };
     });
+
+    // Show toast notification for XP changes
+    if (amount > 0) {
+      const category = skillCategory && skillCategory !== SkillCategory.MISC ? skillCategory : undefined;
+      gameToast.xp(amount, category ? `${category} skill boost` : undefined);
+    }
 
     setXpPopups((prev: Record<string, number>) => ({ ...prev, ...popups }));
     setFlashKey((k: number) => k + 1);
@@ -273,6 +281,11 @@ const App: React.FC = () => {
     } : t));
 
     applyGlobalXPChange(amount, id, { [id]: amount }, task.skillCategory);
+
+    // Show streak toast for habits with streaks > 1
+    if (task.isHabit && newStreak > 1) {
+      setTimeout(() => gameToast.streak(newStreak, task.title), 500);
+    }
   };
 
   // Logic for undoing task completion on Dashboard
