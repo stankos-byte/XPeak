@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { storage } from '../services/localStorage';
+import { persistenceService } from '../services/persistenceService';
 
 /**
  * Hook for syncing state with localStorage
- * Automatically saves to localStorage on state changes
+ * Automatically saves to localStorage on state changes (debounced)
  */
 export function useLocalStorage<T>(
   key: string,
@@ -11,12 +11,12 @@ export function useLocalStorage<T>(
 ): [T, React.Dispatch<React.SetStateAction<T>>] {
   // Get initial value from localStorage or use provided initial value
   const [storedValue, setStoredValue] = useState<T>(() => {
-    return storage.get(key, initialValue);
+    return persistenceService.get(key, initialValue);
   });
 
-  // Update localStorage whenever state changes
+  // Update localStorage whenever state changes (debounced)
   useEffect(() => {
-    storage.set(key, storedValue);
+    persistenceService.set(key, storedValue);
   }, [key, storedValue]);
 
   return [storedValue, setStoredValue];
@@ -31,15 +31,15 @@ export function useLazyLocalStorage<T>(
   initialValue: T
 ): [T, React.Dispatch<React.SetStateAction<T>>, () => void] {
   const [value, setValue] = useState<T>(() => {
-    return storage.get(key, initialValue);
+    return persistenceService.get(key, initialValue);
   });
 
   const [hasLoaded, setHasLoaded] = useState(false);
 
-  // Save to localStorage
+  // Save to localStorage (debounced)
   useEffect(() => {
     if (hasLoaded) {
-      storage.set(key, value);
+      persistenceService.set(key, value);
     } else {
       setHasLoaded(true);
     }
@@ -47,7 +47,7 @@ export function useLazyLocalStorage<T>(
 
   // Manual reload from localStorage
   const reload = useCallback(() => {
-    setValue(storage.get(key, initialValue));
+    setValue(persistenceService.get(key, initialValue));
   }, [key, initialValue]);
 
   return [value, setValue, reload];

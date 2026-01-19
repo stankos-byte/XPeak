@@ -1,4 +1,4 @@
-import { Task, XPResult, Difficulty, FriendChallenge, ChallengeQuestTask } from '../types';
+import { Task, XPResult, Difficulty, FriendChallenge, ChallengeQuestTask, QuestCategory, MainQuest, QuestTask } from '../types';
 import { BASE_XP, DIFFICULTY_MULTIPLIERS } from '../constants';
 
 /**
@@ -183,4 +183,26 @@ export const calculateUserSkillXP = (
   });
   
   return skillXP;
+};
+
+/**
+ * Checks if a quest category is complete (all tasks completed)
+ */
+export const isCategoryComplete = (category: QuestCategory): boolean => 
+  category.tasks.length > 0 && category.tasks.every(t => t.status === 'completed');
+
+/**
+ * Checks if a quest is complete (all categories complete)
+ */
+export const isQuestComplete = (quest: MainQuest): boolean => 
+  quest.categories.length > 0 && quest.categories.every(cat => isCategoryComplete(cat));
+
+/**
+ * Gets quest bonus amount based on category count
+ */
+export const getQuestBonusAmount = (categoryCount: number): number => {
+  if (categoryCount < 1) return 0;
+  if (categoryCount < 3) return 80;
+  if (categoryCount <= 5) return 120;
+  return 180;
 };

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Difficulty, SkillCategory, Task, TaskTemplate } from '../../types';
 import { X, ChevronDown, Save, Trash2, Sparkles, Loader2 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import { analyzeTask } from '../../services/aiService';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -57,28 +57,9 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     if (!title.trim()) return;
     setIsAuditing(true);
     try {
-      // Create new instance with named parameter for apiKey as per guidelines
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze this task title: "${title}". Determine the most appropriate SkillCategory (Physical, Mental, Professional, Social, Creative, Default) and Difficulty (Easy, Medium, Hard, Epic). Use 'Default' if the task doesn't fit specific skills.`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
-              skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) },
-              suggestedDescription: { type: Type.STRING }
-            },
-            required: ["difficulty", "skillCategory"]
-          }
-        }
-      });
-
-      const result = JSON.parse(response.text || '{}');
-      if (result.difficulty) setDifficulty(result.difficulty as Difficulty);
-      if (result.skillCategory) setSkillCategory(result.skillCategory as SkillCategory);
+      const result = await analyzeTask(title);
+      if (result.difficulty) setDifficulty(result.difficulty);
+      if (result.skillCategory) setSkillCategory(result.skillCategory);
       if (result.suggestedDescription && !description) setDescription(result.suggestedDescription);
     } catch (error) {
       console.error("Smart Audit failed:", error);

@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command } from 'lucide-react';
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { UserProfile, Task, MainQuest, FriendChallenge, Friend, Difficulty, SkillCategory, ChatMessage } from '../../types';
+import { generateChatResponse, generateFollowUpResponse } from '../../services/aiService';
 
 interface AIAssistantProps {
   user: UserProfile;
@@ -99,99 +99,6 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
     });
   };
 
-  // --- Tool Definitions ---
-
-  const createTaskTool: FunctionDeclaration = {
-    name: "create_task",
-    description: "Create a new task, habit, or to-do item. EXECUTE THIS ONLY when the user explicitly says 'add', 'create', 'remind me', or 'set a task'. DO NOT use this for general advice or suggestions.",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING, description: "Title of the task" },
-        description: { type: Type.STRING, description: "Brief description of the objective" },
-        difficulty: { type: Type.STRING, enum: Object.values(Difficulty), description: "Difficulty level" },
-        skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory), description: "Related skill attribute" },
-        isHabit: { type: Type.BOOLEAN, description: "True if this is a recurring habit, False if one-time task" }
-      },
-      required: ["title", "difficulty", "skillCategory", "isHabit"]
-    }
-  };
-
-  const createQuestTool: FunctionDeclaration = {
-    name: "create_quest",
-    description: "Initialize a new Main Quest. Use this ONLY for large, multi-step projects. You MUST generate a detailed breakdown of 'categories' (phases) and 'tasks' (steps) to populate the quest plan.",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING, description: "The epic title of the quest" },
-        categories: {
-            type: Type.ARRAY,
-            description: "Detailed breakdown of the quest into phases/sections",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING, description: "Phase title (e.g., 'Phase 1: Research')" },
-                    tasks: {
-                        type: Type.ARRAY,
-                        description: "Actionable steps for this phase",
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                name: { type: Type.STRING, description: "Actionable task name" },
-                                difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
-                                skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) },
-                                description: { type: Type.STRING, description: "Short description/context" }
-                            },
-                            required: ["name", "difficulty", "skillCategory"]
-                        }
-                    }
-                },
-                required: ["title", "tasks"]
-            }
-        }
-      },
-      required: ["title", "categories"]
-    }
-  };
-
-  const createChallengeTool: FunctionDeclaration = {
-    name: "create_challenge",
-    description: "Create a competitive challenge against a friend/operative. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' (steps) for the challenge. Example: For a fitness challenge, create categories like 'Week 1: Warmup', 'Week 2: Intensity', each with multiple specific tasks like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without tasks!",
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING, description: "Name of the challenge" },
-        description: { type: Type.STRING, description: "Terms of the challenge" },
-        opponentName: { type: Type.STRING, description: "Name of the friend to challenge (must match a friend in the list)" },
-        categories: {
-            type: Type.ARRAY,
-            description: "Detailed breakdown of the challenge into phases/sections with tasks",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING, description: "Phase title (e.g., 'Week 1: Fundamentals')" },
-                    tasks: {
-                        type: Type.ARRAY,
-                        description: "Actionable tasks for this phase that both you and your opponent will complete",
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                name: { type: Type.STRING, description: "Actionable task name" },
-                                difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
-                                skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) },
-                                description: { type: Type.STRING, description: "Short description/context" }
-                            },
-                            required: ["name", "difficulty", "skillCategory"]
-                        }
-                    }
-                },
-                required: ["title", "tasks"]
-            }
-        }
-      },
-      required: ["title", "opponentName", "categories"]
-    }
-  };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -203,8 +110,6 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
     setIsTyping(true);
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      
       // Construct Context
       const activeTasksCount = tasks.filter(t => !t.completed).length;
       const systemPrompt = `
@@ -235,20 +140,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
         Gamify everything.
       `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [
-            ...messages.filter(m => m.role !== 'system').map(m => ({
-                role: m.role === 'user' ? 'user' : 'model',
-                parts: [{ text: m.text || '' }]
-            })),
-            { role: 'user', parts: [{ text: input }] }
-        ],
-        config: {
-            systemInstruction: systemPrompt,
-            tools: [{ functionDeclarations: [createTaskTool, createQuestTool, createChallengeTool] }],
-        }
-      });
+      const response = await generateChatResponse(messages, input, systemPrompt);
 
       const functionCalls = response.functionCalls;
       
@@ -319,20 +211,15 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
          }
          
          // Send function response back to model to get final text
-         const finalResponse = await ai.models.generateContent({
-             model: 'gemini-3-flash-preview',
-             contents: [
-                ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text || '' }] })),
-                { role: 'user', parts: [{ text: input }] },
-                response.candidates![0].content, // The model's tool call turn
-                { role: 'user', parts: functionResponses.map(fr => ({ functionResponse: fr })) } // Our response
-             ],
-             config: {
-                 systemInstruction: systemPrompt, // Ensure system prompt is present in follow-up too
-             }
-         });
+         const finalText = await generateFollowUpResponse(
+           messages,
+           input,
+           systemPrompt,
+           response,
+           functionResponses
+         );
          
-         addMessage({ id: crypto.randomUUID(), role: 'model', text: finalResponse.text || "Directives executed." });
+         addMessage({ id: crypto.randomUUID(), role: 'model', text: finalText });
 
       } else {
          addMessage({ id: crypto.randomUUID(), role: 'model', text: response.text || "Standby..." });

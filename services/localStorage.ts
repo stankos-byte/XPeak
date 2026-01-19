@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
   TASKS: 'lvlup_tasks',
   QUESTS: 'lvlup_quests',
   EXPANDED_NODES: 'lvlup_expanded_nodes',
+  ARCHIVED_HISTORY: 'lvlup_archived_history',
 } as const;
 
 class StorageService {
