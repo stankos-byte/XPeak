@@ -30,7 +30,7 @@ Transform your daily life into an epic RPG adventure! XPeak helps you level up b
 npm install
 
 # Create .env file
-echo "GEMINI_API_KEY=your_api_key_here" > .env
+echo "VITE_GEMINI_API_KEY=your_api_key_here" > .env
 
 # Start development server
 npm run dev
