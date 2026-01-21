@@ -83,16 +83,19 @@ export interface SkillProgress {
   level: number;
 }
 
+export interface DailyActivity {
+  date: string; // YYYY-MM-DD format
+  totalXP: number;
+  taskCount: number;
+  taskIds?: string[]; // Optional: for detailed view if needed
+}
+
 export interface UserProfile {
   name: string;
   totalXP: number;
   level: number;
   skills: Record<SkillCategory, SkillProgress>;
-  history: {
-    date: string;
-    xpGained: number;
-    taskId: string;
-  }[];
+  history: DailyActivity[]; // Changed to daily aggregates
   identity: string;
   goals: Goal[];
   templates: TaskTemplate[];

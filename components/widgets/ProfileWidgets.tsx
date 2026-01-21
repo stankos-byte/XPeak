@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { Crown, Pencil, Save, TrendingUp, Mountain, CheckSquare, Square, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, Activity, Calendar, Users, UserPlus, Trophy, Circle } from 'lucide-react';
+import { Crown, Pencil, Save, TrendingUp, Mountain, CheckSquare, Square, Trash2, Eye, EyeOff, ChevronUp, ChevronDown, Activity, Calendar, Users, UserPlus, Trophy, Circle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { UserProfile, Goal, SkillCategory } from '../../types';
 import SkillRadar from '../charts/SkillRadar';
 import { getLevelProgress } from '../../utils/gamification';
@@ -137,10 +137,31 @@ export const EvolutionWidget: React.FC<{ user: UserProfile; flashKey: number } &
 export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ user, isCustomizing, onToggle, onMoveUp, onMoveDown, enabled, isFirst, isLast }) => {
   if (!enabled && !isCustomizing) return null;
 
-  // Helper to get days in month
   const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth(); // 0-indexed
+  const [selectedDate, setSelectedDate] = useState<Date>(today);
+
+  // Navigation handlers
+  const goToPreviousMonth = () => {
+    setSelectedDate(prev => {
+      const newDate = new Date(prev.getFullYear(), prev.getMonth() - 1, 1);
+      return newDate;
+    });
+  };
+
+  const goToNextMonth = () => {
+    setSelectedDate(prev => {
+      const newDate = new Date(prev.getFullYear(), prev.getMonth() + 1, 1);
+      return newDate;
+    });
+  };
+
+  const goToToday = () => {
+    setSelectedDate(today);
+  };
+
+  // Helper to get days in month
+  const year = selectedDate.getFullYear();
+  const month = selectedDate.getMonth(); // 0-indexed
   
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday
@@ -155,14 +176,18 @@ export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ 
     days.push(new Date(year, month, i));
   }
 
-  // Calculate activity
+  // Calculate activity from daily aggregates
   const activityMap = new Map<string, number>();
   user.history.forEach(h => {
-     if (h.xpGained > 0) {
-         const dateStr = new Date(h.date).toLocaleDateString(); // Local date string
-         activityMap.set(dateStr, (activityMap.get(dateStr) || 0) + 1);
+     if (h.taskCount > 0) {
+         // History dates are in YYYY-MM-DD format, use directly for matching
+         activityMap.set(h.date, h.taskCount);
      }
   });
+
+  // Check if selected month is the current month
+  const isCurrentMonth = selectedDate.getFullYear() === today.getFullYear() && 
+                         selectedDate.getMonth() === today.getMonth();
 
   const getIntensity = (count: number) => {
       if (count === 0) return 'bg-surface border-secondary/10 text-secondary';
@@ -179,7 +204,33 @@ export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ 
       <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Calendar size={16} /> Activity Log</h3>
       <div className="bg-surface border border-secondary/20 rounded-xl p-4 shadow-xl">
          <div className="flex items-center justify-between mb-2">
-            <span className="text-white text-sm font-bold uppercase tracking-wider">{today.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+            <div className="flex items-center gap-2">
+               <button
+                  onClick={goToPreviousMonth}
+                  className="p-1 hover:bg-primary/20 rounded transition-colors text-secondary hover:text-primary"
+                  aria-label="Previous month"
+               >
+                  <ChevronLeft size={16} />
+               </button>
+               <button
+                  onClick={goToToday}
+                  className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                     isCurrentMonth 
+                        ? 'bg-primary text-background' 
+                        : 'bg-background/50 text-secondary hover:bg-primary/20 hover:text-primary'
+                  }`}
+               >
+                  {selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+               </button>
+               <button
+                  onClick={goToNextMonth}
+                  className="p-1 hover:bg-primary/20 rounded transition-colors text-secondary hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent"
+                  aria-label="Next month"
+                  disabled={isCurrentMonth}
+               >
+                  <ChevronRight size={16} />
+               </button>
+            </div>
             <div className="flex items-center gap-1.5 text-[8px] uppercase font-bold text-secondary">
                <span>Less</span>
                <div className="flex gap-0.5">
@@ -198,7 +249,9 @@ export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ 
          <div className="grid grid-cols-7 gap-1">
             {days.map((date, idx) => {
                 if (!date) return <div key={idx} className="aspect-square"></div>;
-                const count = activityMap.get(date.toLocaleDateString()) || 0;
+                // Convert date to YYYY-MM-DD format to match history dates
+                const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                const count = activityMap.get(dateKey) || 0;
                 const isToday = date.toDateString() === today.toDateString();
                 
                 return (

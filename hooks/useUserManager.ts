@@ -4,7 +4,7 @@ import { calculateLevel, getLevelProgress } from '../utils/gamification';
 import { storage, STORAGE_KEYS } from '../services/localStorage';
 import { persistenceService } from '../services/persistenceService';
 import { gameToast } from '../components/ui/GameToast';
-import { addHistoryEntry, processHistory, ArchivedHistory } from '../services/historyService';
+import { addHistoryEntry, processHistory, ArchivedHistory, migrateToDailyAggregates, HistoryEntry } from '../services/historyService';
 
 const DEFAULT_LAYOUT: ProfileLayout = { 
   widgets: [
@@ -48,8 +48,17 @@ const getInitialUserLocal = (): UserProfile => {
         widgets: [...saved.layout.widgets, ...newWidgets]
     } : DEFAULT_LAYOUT;
 
+    // Migrate legacy history format to daily aggregates if needed
+    let historyToProcess = saved.history || [];
+    
+    // Check if history is in legacy format (has taskId property) and migrate
+    if (historyToProcess.length > 0 && 'taskId' in historyToProcess[0]) {
+      // Legacy format detected - migrate to daily aggregates
+      historyToProcess = migrateToDailyAggregates(historyToProcess as HistoryEntry[]);
+    }
+    
     // Process history to ensure it's within limits and archive old entries
-    const { activeHistory, archivedData } = processHistory(saved.history || []);
+    const { activeHistory, archivedData } = processHistory(historyToProcess);
     
     // Store archived data if any exists
     if (archivedData) {
