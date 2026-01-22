@@ -47,10 +47,10 @@ const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="max-w-4xl mx-auto animate-in fade-in duration-500 pb-20">
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2">Level Status</h3>
+          <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2">Performance Metrics</h3>
           <div className="flex items-center gap-1.5 text-primary">
             <Sparkles size={14} className="animate-pulse" />
-            <span className="text-xs font-black uppercase tracking-widest">Lifetime XP: {Math.floor(user.totalXP)}</span>
+            <span className="text-xs font-black uppercase tracking-widest">Output Velocity: {Math.floor(user.totalXP)}</span>
           </div>
         </div>
         <div className="bg-surface border border-secondary/20 rounded-2xl p-6 shadow-xl relative overflow-hidden group">
@@ -73,15 +73,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
       <header className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
         <div>
-          <h2 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Active Tasks</h2>
-          <p className="text-secondary font-medium tracking-wide">{activeTasks.length} objectives currently deployed.</p>
+          <h2 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Active Objectives</h2>
+          <p className="text-secondary font-medium tracking-wide">{activeTasks.length} objectives currently active.</p>
         </div>
         <button 
           onClick={() => { setEditingTask(null); setIsModalOpen(true); }}
           className="flex items-center gap-2 bg-primary hover:bg-cyan-400 text-background px-6 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 w-full md:w-auto justify-center"
         >
           <Plus size={20} strokeWidth={3} />
-          Add Task
+          Add Objective
         </button>
       </header>
 
@@ -108,7 +108,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             className="text-center py-20 bg-surface/30 rounded-2xl border border-dashed border-secondary/20"
           >
             <Trophy className="mx-auto text-secondary/40 mb-4" size={64} />
-            <p className="text-secondary font-black uppercase tracking-widest text-sm">Zone Secured. No active threats.</p>
+            <p className="text-secondary font-black uppercase tracking-widest text-sm">All objectives complete. System optimized.</p>
           </motion.div>
         )}
       </div>
@@ -116,7 +116,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
       <section className="animate-in slide-in-from-bottom-4 duration-700 delay-200">
         <div className="flex items-center gap-3 mb-6 px-1">
           <History size={18} className="text-secondary" />
-          <h2 className="text-lg font-black text-secondary uppercase tracking-widest italic">Task History</h2>
+          <h2 className="text-lg font-black text-secondary uppercase tracking-widest italic">Completion History</h2>
         </div>
         
         <div className="space-y-3">
@@ -156,7 +156,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                         <h4 className="font-bold text-gray-300 line-through decoration-secondary/50 text-sm">{task.title}</h4>
                         {task.isHabit && (
                           <span className="text-[9px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded uppercase font-black tracking-wider">
-                            Streak: {task.streak}
+                            Consistency: {task.streak}
                           </span>
                         )}
                       </div>
@@ -174,7 +174,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
                    <button 
                      onClick={() => handleDeleteTask(task.id)}
                      className="p-2 text-secondary hover:text-red-400 bg-background/50 rounded-lg transition-all"
-                     title="Purge Record"
+                     title="Remove Record"
                    >
                      <Trash2 size={16} />
                    </button>
@@ -183,7 +183,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             ))
           ) : (
             <div className="text-center py-10 border border-dashed border-secondary/10 rounded-xl">
-              <p className="text-[10px] text-secondary/40 font-black uppercase tracking-widest">No historical data found in current session.</p>
+              <p className="text-[10px] text-secondary/40 font-black uppercase tracking-widest">No completion history available.</p>
             </div>
           )}
         </div>

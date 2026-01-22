@@ -70,7 +70,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onComplete, onUncomplete, onD
               ? 'text-emerald-500 hover:text-red-400' 
               : 'text-secondary hover:text-primary'
           )}
-          title={task.completed ? "Undo completion" : "Complete Task"}
+                  title={task.completed ? "Undo completion" : "Complete Objective"}
         >
           {task.completed ? (
             <motion.div
@@ -136,7 +136,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onComplete, onUncomplete, onD
                   whileHover={{ scale: 1.15 }}
                   whileTap={{ scale: 0.9 }}
                   className="p-1.5 text-secondary hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
-                  title="Edit Task"
+                  title="Edit Objective"
               >
                   <Pencil size={16} />
               </motion.button>
@@ -145,7 +145,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onComplete, onUncomplete, onD
                   whileHover={{ scale: 1.15 }}
                   whileTap={{ scale: 0.9 }}
                   className="p-1.5 text-secondary hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
-                  title="Abandon Task"
+                  title="Delete Objective"
               >
                   <Trash2 size={16} />
               </motion.button>

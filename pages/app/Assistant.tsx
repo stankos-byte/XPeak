@@ -113,8 +113,8 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
       // Construct Context
       const activeTasksCount = tasks.filter(t => !t.completed).length;
       const systemPrompt = `
-        You are the XPeak OS AI. You are helpful, strategic, and concise. 
-        You speak like a sci-fi system interface or a tactical handler.
+        You are the XPeak Performance Analytics Assistant. You are professional, strategic, and concise. 
+        You speak like a high-performance business intelligence system, using executive terminology.
         
         CURRENT USER STATUS:
         Name: ${user.name}
@@ -127,17 +127,17 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
         Friends: ${friends.map(f => f.name).join(', ')}
         
         DECISION PROTOCOL:
-        1. **GENERAL INQUIRY / CHAT**: If the user asks a question, seeks advice, or chats (e.g., "How do I get fit?", "What is XP?", "Suggest some habits"), JUST REPLY with text. DO NOT use any tools.
-        2. **SINGLE TASK**: ONLY if the user explicitly COMMANDS to add an item (e.g., "Add a task to...", "Remind me to...", "Create a habit..."), use 'create_task'.
-        3. **COMPLEX QUEST**: ONLY if the user COMMANDS to start a large project (e.g., "Start a quest to...", "I want to build a...", "Plan a..."), use 'create_quest'. You MUST generate a full breakdown of categories and tasks for the quest.
-        4. **COMPETITION**: Use 'create_challenge' ONLY for explicit PvP requests (e.g., "Challenge [friend] to...", "Create a challenge against..."). 
+        1. **GENERAL INQUIRY / CHAT**: If the user asks a question, seeks advice, or chats (e.g., "How do I improve performance?", "What is Output Velocity?", "Suggest some objectives"), JUST REPLY with text. DO NOT use any tools.
+        2. **SINGLE OBJECTIVE**: ONLY if the user explicitly COMMANDS to add an item (e.g., "Add an objective to...", "Remind me to...", "Create a habit..."), use 'create_task'.
+        3. **SKILL TREE**: ONLY if the user COMMANDS to start a large project (e.g., "Start a skill tree to...", "I want to build a...", "Plan a..."), use 'create_quest'. You MUST generate a full breakdown of phases and objectives for the skill tree.
+        4. **COMPETITION**: Use 'create_challenge' ONLY for explicit competitive requests (e.g., "Challenge [friend] to...", "Create a challenge against..."). 
            CRITICAL: You MUST ALWAYS generate a detailed breakdown with:
-           - Multiple categories (at least 2-3 phases/sections)
-           - Multiple tasks per category (at least 3-5 tasks per section)
-           - Each task must have: name, difficulty, skillCategory, and optional description
-           - Think of creative, competitive tasks that both players can complete
+           - Multiple phases (at least 2-3 phases/sections)
+           - Multiple objectives per phase (at least 3-5 objectives per section)
+           - Each objective must have: name, difficulty, skillCategory, and optional description
+           - Think of strategic, competitive objectives that both participants can complete
 
-        Gamify everything.
+        Use professional terminology. Focus on performance optimization and measurable outcomes.
       `;
 
       const response = await generateChatResponse(messages, input, systemPrompt);
@@ -153,10 +153,10 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
              try {
                 if (call.name === 'create_task') {
                     onAddTask(call.args);
-                    result.message = `Task "${call.args.title}" added to database.`;
+                    result.message = `Objective "${call.args.title}" added to system.`;
                 } else if (call.name === 'create_quest') {
                     onAddQuest(call.args.title as string, call.args.categories as any[]);
-                    result.message = `Quest protocol "${call.args.title}" initialized with ${(call.args.categories as any[])?.length || 0} phases.`;
+                    result.message = `Skill Tree "${call.args.title}" initialized with ${(call.args.categories as any[])?.length || 0} phases.`;
                 } else if (call.name === 'create_challenge') {
                     const args = call.args as any;
                     const opponent = friends.find(f => f.name.toLowerCase().includes(args.opponentName.toLowerCase()));
@@ -188,7 +188,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                         const taskCount = formattedCategories.reduce((sum: number, cat: any) => sum + (cat.tasks?.length || 0), 0);
                         result.message = `Challenge contract "${args.title}" deployed against ${opponent.name} with ${taskCount} tasks across ${formattedCategories.length} phases.`;
                     } else {
-                         result = { status: 'error', message: `Target operative "${args.opponentName}" not found in network.` };
+                         result = { status: 'error', message: `Connection "${args.opponentName}" not found in network.` };
                     }
                 }
              } catch (err) {
@@ -227,7 +227,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
 
     } catch (error) {
       console.error(error);
-      addMessage({ id: crypto.randomUUID(), role: 'model', text: "ERROR: Connection to mainframe unstable. Please retry." });
+      addMessage({ id: crypto.randomUUID(), role: 'model', text: "ERROR: Connection to analytics system unstable. Please retry." });
     } finally {
       setIsTyping(false);
     }
@@ -240,10 +240,10 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
             <Bot size={28} className="text-primary" />
          </div>
          <div>
-            <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter italic">System Oracle</h1>
+            <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter italic">Performance Analytics</h1>
             <p className="text-secondary font-medium tracking-wide text-sm flex items-center gap-2">
                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-               AI Neural Link Active
+               AI Assistant Active
             </p>
          </div>
       </header>
@@ -259,7 +259,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                         {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                     </div>
                     <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        {msg.role !== 'user' && <span className="text-[10px] font-black text-primary uppercase tracking-widest mb-1 opacity-50">Oracle System</span>}
+                        {msg.role !== 'user' && <span className="text-[10px] font-black text-primary uppercase tracking-widest mb-1 opacity-50">Analytics Assistant</span>}
                         <div className={`p-4 rounded-2xl text-sm font-medium leading-relaxed shadow-lg ${
                             msg.role === 'user' 
                             ? 'bg-secondary/10 border border-secondary/20 text-gray-100 rounded-tr-none' 

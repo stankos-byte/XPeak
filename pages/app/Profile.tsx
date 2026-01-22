@@ -82,7 +82,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
           </button>
           <div>
             <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">{user.name}</h1>
-            <p className="text-primary text-sm font-bold uppercase tracking-wider">Evolved Rank {user.level} Protocol</p>
+            <p className="text-primary text-sm font-bold uppercase tracking-wider">Performance Level {user.level}</p>
           </div>
         </div>
 
@@ -101,7 +101,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
           </button>
           <div>
             <h1 className="text-2xl font-black text-white uppercase tracking-tighter italic">{user.name}</h1>
-            <p className="text-primary text-xs font-bold uppercase tracking-wider">Evolved Rank {user.level} Protocol</p>
+            <p className="text-primary text-xs font-bold uppercase tracking-wider">Performance Level {user.level}</p>
           </div>
         </div>
 
@@ -112,10 +112,10 @@ const ProfileView: React.FC<ProfileViewProps> = ({
       </div>
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3 px-1">
-          <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2">Level Status</h3>
+          <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2">Performance Metrics</h3>
           <div className="flex items-center gap-1.5 text-primary">
             <Sparkles size={14} className="animate-pulse" />
-            <span className="text-xs font-black uppercase tracking-widest">Lifetime XP: {Math.floor(user.totalXP)}</span>
+            <span className="text-xs font-black uppercase tracking-widest">Output Velocity: {Math.floor(user.totalXP)}</span>
           </div>
         </div>
         <div className="bg-surface border border-secondary/20 rounded-2xl p-6 shadow-xl relative overflow-hidden group">

@@ -40,15 +40,15 @@ const QuestsView: React.FC<QuestsViewProps> = ({
     <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-8 duration-500 pb-24">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4 px-1">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black text-white mb-1 uppercase tracking-tighter italic">Quest Log</h1>
-          <p className="text-secondary font-medium tracking-wide">Strategic breakdown of multi-stage operations.</p>
+          <h1 className="text-2xl md:text-3xl font-black text-white mb-1 uppercase tracking-tighter italic">Skill Trees</h1>
+          <p className="text-secondary font-medium tracking-wide">Strategic breakdown of complex objectives into mastery paths.</p>
         </div>
         <button 
           onClick={() => setTextModalConfig({ isOpen: true, type: 'quest' })}
           className="flex items-center gap-2 bg-primary hover:bg-cyan-400 text-background px-6 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 w-full md:w-auto justify-center"
         >
           <Plus size={20} strokeWidth={3} />
-          Deploy Main Quest
+          Create Skill Tree
         </button>
       </header>
       
@@ -63,7 +63,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
               {popups[`quest-bonus-${mainQuest.id}`] !== undefined && (
                 <div className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-xp-float flex items-center gap-2 whitespace-nowrap">
                   <span className={`text-2xl font-black drop-shadow-[0_0_15px_rgba(0,0,0,0.8)] ${popups[`quest-bonus-${mainQuest.id}`] > 0 ? 'text-primary' : 'text-red-400'}`}>
-                    {popups[`quest-bonus-${mainQuest.id}`] > 0 ? `+${popups[`quest-bonus-${mainQuest.id}`]}` : popups[`quest-bonus-${mainQuest.id}`]} XP [QUEST BONUS]
+                            {popups[`quest-bonus-${mainQuest.id}`] > 0 ? `+${popups[`quest-bonus-${mainQuest.id}`]}` : popups[`quest-bonus-${mainQuest.id}`]} XP [COMPLETION BONUS]
                   </span>
                   <Sparkles className="text-primary animate-pulse" size={24} />
                 </div>
@@ -84,14 +84,14 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                       <button 
                         onClick={(e) => { e.stopPropagation(); setTextModalConfig({ isOpen: true, type: 'edit-quest', parentId: mainQuest.id, initialValue: mainQuest.title }); }}
                         className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-all"
-                        title="Edit Quest Identifier"
+                        title="Edit Skill Tree Title"
                       >
                         <Pencil size={20} />
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setTextModalConfig({ isOpen: true, type: 'category', parentId: mainQuest.id }); }}
                         className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-all"
-                        title="Add New Section"
+                        title="Add Phase"
                       >
                         <PlusCircle size={20} />
                       </button>
@@ -99,14 +99,14 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                         onClick={(e) => { e.stopPropagation(); handleQuestOracle(mainQuest); }}
                         disabled={isOracling}
                         className={`p-2.5 rounded-xl transition-all border ${isOracling ? 'border-primary text-primary animate-pulse' : 'border-secondary/20 text-secondary hover:text-primary hover:border-primary/40'}`}
-                        title="Summon AI Oracle"
+                        title="Generate Breakdown"
                       >
                         {isOracling ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteQuest(mainQuest.id); }}
                         className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-red-400 hover:border-red-400/40 transition-all"
-                        title="Abort Quest Chain"
+                        title="Delete Skill Tree"
                       >
                         <Trash2 size={20} />
                       </button>
@@ -167,7 +167,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                       {popups[`section-bonus-${category.id}`] !== undefined && (
                         <div className="absolute -top-6 right-10 z-50 pointer-events-none animate-xp-float flex items-center gap-1 whitespace-nowrap">
                           <span className={`text-lg font-black drop-shadow-[0_0_12px_rgba(0,0,0,0.8)] ${popups[`section-bonus-${category.id}`] > 0 ? 'text-primary' : 'text-red-400'}`}>
-                            {popups[`section-bonus-${category.id}`] > 0 ? `+${popups[`section-bonus-${category.id}`]}` : popups[`section-bonus-${category.id}`]} XP [SECTION BONUS]
+                            {popups[`section-bonus-${category.id}`] > 0 ? `+${popups[`section-bonus-${category.id}`]}` : popups[`section-bonus-${category.id}`]} XP [PHASE BONUS]
                           </span>
                         </div>
                       )}
@@ -178,7 +178,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                           <button 
                             onClick={() => setTextModalConfig({ isOpen: true, type: 'edit-category', parentId: mainQuest.id, categoryId: category.id, initialValue: category.title })}
                             className="p-1.5 text-secondary hover:text-primary transition-all"
-                            title="Edit Section Title"
+                            title="Edit Phase Title"
                           >
                             <Pencil size={18} />
                           </button>
@@ -192,7 +192,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                           <button 
                             onClick={() => handleDeleteCategory(mainQuest.id, category.id)}
                             className="p-1.5 text-secondary hover:text-red-400 transition-all"
-                            title="Purge Section"
+                            title="Delete Phase"
                           >
                             <Trash2 size={18} />
                           </button>
@@ -229,7 +229,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                         })}
                         
                         {category.tasks.length === 0 && (
-                          <p className="text-[10px] text-secondary/40 font-black uppercase tracking-widest p-4 border border-dashed border-secondary/10 rounded-xl text-center">Empty Section</p>
+                          <p className="text-[10px] text-secondary/40 font-black uppercase tracking-widest p-4 border border-dashed border-secondary/10 rounded-xl text-center">No objectives in this phase</p>
                         )}
                       </div>
                     </div>
@@ -237,7 +237,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
 
                   {mainQuest.categories.length === 0 && (
                     <div className="text-center py-10 bg-background/20 rounded-2xl border border-dashed border-secondary/10">
-                      <p className="text-secondary font-black uppercase tracking-widest text-xs italic">No sections defined.</p>
+                      <p className="text-secondary font-black uppercase tracking-widest text-xs italic">No phases defined.</p>
                     </div>
                   )}
                 </div>

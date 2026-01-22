@@ -53,7 +53,7 @@ const SimpleInputModal: React.FC<SimpleInputModalProps> = ({ isOpen, onClose, on
             disabled={!value.trim()}
             className="w-full bg-primary hover:bg-cyan-400 disabled:opacity-30 disabled:grayscale text-background font-black uppercase tracking-widest py-4 px-4 rounded-xl transition-all shadow-lg shadow-primary/20"
           >
-            {initialValue ? 'Update' : 'Deploy'}
+            {initialValue ? 'Update' : 'Create'}
           </button>
         </form>
       </div>

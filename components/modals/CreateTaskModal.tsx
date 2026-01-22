@@ -101,7 +101,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-md">
       <div className="bg-surface border border-secondary/30 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden shadow-primary/5">
         <div className="flex items-center justify-between p-5 border-b border-secondary/20 bg-background/40">
-          <h2 className="text-xl font-black text-white uppercase tracking-tighter italic">{editingTask ? 'Modify Task' : 'New Task'}</h2>
+          <h2 className="text-xl font-black text-white uppercase tracking-tighter italic">{editingTask ? 'Modify Objective' : 'New Objective'}</h2>
           <button onClick={onClose} className="text-secondary hover:text-primary">
             <X size={24} strokeWidth={3} />
           </button>
@@ -110,7 +110,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div className="relative">
             <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest">Task Descriptor</label>
+              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest">Objective Title</label>
               <div className="flex items-center gap-3">
                 <button 
                   type="button"
@@ -147,7 +147,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                 onClick={handleSmartAudit}
                 disabled={isAuditing || !title.trim()}
                 className={`p-4 rounded-xl border transition-all flex items-center justify-center ${isAuditing ? 'bg-secondary/20 border-secondary' : 'bg-primary/10 border-primary/30 text-primary hover:bg-primary/20'}`}
-                title="Smart Audit with AI"
+                title="AI Analysis"
               >
                 {isAuditing ? <Loader2 size={20} className="animate-spin" /> : <Sparkles size={20} />}
               </button>
@@ -155,7 +155,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
             {showTemplates && templates.length > 0 && (
               <div className="absolute top-[calc(100%+8px)] left-0 right-0 z-10 bg-surface border border-primary/30 rounded-xl shadow-2xl p-2 max-h-64 overflow-y-auto custom-scrollbar animate-in slide-in-from-top-2">
-                <div className="p-2 text-[10px] font-black text-secondary uppercase tracking-widest border-b border-secondary/10 mb-2">Stored Templates</div>
+                <div className="p-2 text-[10px] font-black text-secondary uppercase tracking-widest border-b border-secondary/10 mb-2">Saved Templates</div>
                 {templates.map(tpl => (
                   <div key={tpl.id} className="flex items-center gap-2 group">
                     <button
@@ -182,7 +182,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Intel Data</label>
+            <label className="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Description</label>
             <textarea 
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -193,7 +193,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Threat Level</label>
+              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Complexity</label>
               <select 
                 value={difficulty} 
                 onChange={(e) => setDifficulty(e.target.value as Difficulty)}
@@ -205,7 +205,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
               </select>
             </div>
             <div>
-              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Attribute</label>
+              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest mb-1.5">Skill Category</label>
               <select 
                 value={skillCategory} 
                 onChange={(e) => setSkillCategory(e.target.value as SkillCategory)}
@@ -235,7 +235,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
                   ></label>
               </div>
               <label htmlFor="toggle-habit" className="text-xs font-black text-white uppercase tracking-widest cursor-pointer">
-                Cyclical Habit
+                Recurring Habit
               </label>
             </div>
           )}
@@ -244,7 +244,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
             type="submit" 
             className="w-full bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest py-4 px-4 rounded-xl transition-all shadow-lg shadow-primary/20 mt-4"
           >
-            {editingTask ? 'Sync Changes' : 'Execute Creation'}
+            {editingTask ? 'Update Objective' : 'Create Objective'}
           </button>
         </form>
       </div>

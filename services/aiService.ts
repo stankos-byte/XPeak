@@ -45,10 +45,10 @@ export const generateQuest = async (questTitle: string): Promise<Array<{
     const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Break down the quest "${questTitle}" into strategic categories and tasks. 
-      For each category, provide a comprehensive list of tasks. 
-      Do not limit yourself to a small number; if a category is complex, provide 5-10 actionable steps to fully complete it. 
-      Adjust the task count based on the complexity of the section.`,
+      contents: `Break down the skill tree "${questTitle}" into strategic phases and objectives. 
+      For each phase, provide a comprehensive list of objectives. 
+      Do not limit yourself to a small number; if a phase is complex, provide 5-10 actionable steps to fully complete it. 
+      Adjust the objective count based on the complexity of the phase.`,
       config: { 
         responseMimeType: "application/json", 
         responseSchema: { 
@@ -130,7 +130,7 @@ export const analyzeTask = async (taskTitle: string): Promise<{
 export const getAITools = (): FunctionDeclaration[] => {
   const createTaskTool: FunctionDeclaration = {
     name: "create_task",
-    description: "Create a new task, habit, or to-do item. EXECUTE THIS ONLY when the user explicitly says 'add', 'create', 'remind me', or 'set a task'. DO NOT use this for general advice or suggestions.",
+    description: "Create a new objective, habit, or to-do item. EXECUTE THIS ONLY when the user explicitly says 'add', 'create', 'remind me', or 'set an objective'. DO NOT use this for general advice or suggestions.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -146,11 +146,11 @@ export const getAITools = (): FunctionDeclaration[] => {
 
   const createQuestTool: FunctionDeclaration = {
     name: "create_quest",
-    description: "Initialize a new Main Quest. Use this ONLY for large, multi-step projects. You MUST generate a detailed breakdown of 'categories' (phases) and 'tasks' (steps) to populate the quest plan.",
+    description: "Initialize a new Skill Tree. Use this ONLY for large, multi-step projects. You MUST generate a detailed breakdown of 'categories' (phases) and 'tasks' (objectives) to populate the skill tree plan.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        title: { type: Type.STRING, description: "The epic title of the quest" },
+        title: { type: Type.STRING, description: "The strategic title of the skill tree" },
         categories: {
             type: Type.ARRAY,
             description: "Detailed breakdown of the quest into phases/sections",
@@ -183,13 +183,13 @@ export const getAITools = (): FunctionDeclaration[] => {
 
   const createChallengeTool: FunctionDeclaration = {
     name: "create_challenge",
-    description: "Create a competitive challenge against a friend/operative. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' (steps) for the challenge. Example: For a fitness challenge, create categories like 'Week 1: Warmup', 'Week 2: Intensity', each with multiple specific tasks like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without tasks!",
+    description: "Create a competitive challenge against a network connection. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' (objectives) for the challenge. Example: For a fitness challenge, create phases like 'Week 1: Foundation', 'Week 2: Intensity', each with multiple specific objectives like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without objectives!",
     parameters: {
       type: Type.OBJECT,
       properties: {
         title: { type: Type.STRING, description: "Name of the challenge" },
         description: { type: Type.STRING, description: "Terms of the challenge" },
-        opponentName: { type: Type.STRING, description: "Name of the friend to challenge (must match a friend in the list)" },
+        opponentName: { type: Type.STRING, description: "Name of the network connection to challenge (must match a connection in the list)" },
         categories: {
             type: Type.ARRAY,
             description: "Detailed breakdown of the challenge into phases/sections with tasks",

@@ -78,13 +78,13 @@ const App: React.FC = () => {
   
   // AI Assistant state
   const [aiMessages, setAiMessages] = useState<ChatMessage[]>([
-    { id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your designated Support AI. I have access to your skill matrix, active directives, and social protocols. How may I assist in optimizing your progression today?` }
+    { id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active objectives, and network protocols. How may I assist in optimizing your output velocity today?` }
   ]);
 
   // Update AI message when user name changes
   useEffect(() => {
     if (aiMessages.length === 1 && aiMessages[0].id === 'init') {
-      setAiMessages([{ id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your designated Support AI. I have access to your skill matrix, active directives, and social protocols. How may I assist in optimizing your progression today?` }]);
+      setAiMessages([{ id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active objectives, and network protocols. How may I assist in optimizing your output velocity today?` }]);
     }
   }, [userManager.user.name]);
 
@@ -197,11 +197,11 @@ const App: React.FC = () => {
   };
 
   const navItems = [
-    { id: 'dashboard', icon: CheckSquare, label: 'Tasks' }, 
-    { id: 'quests', icon: Map, label: 'Quests' }, 
+    { id: 'dashboard', icon: CheckSquare, label: 'Dashboard' }, 
+    { id: 'quests', icon: Map, label: 'Skill Trees' }, 
     { id: 'tools', icon: BookOpen, label: 'Tools' }, 
-    { id: 'friends', icon: Users, label: 'Friends' },
-    { id: 'assistant', icon: Bot, label: 'Oracle' },
+    { id: 'friends', icon: Users, label: 'Network' },
+    { id: 'assistant', icon: Bot, label: 'Analytics' },
     { id: 'profile', icon: User, label: 'Profile' }
   ];
 
@@ -335,8 +335,8 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/90 backdrop-blur-xl animate-in fade-in duration-300">
            <div className="bg-surface border-2 border-primary/40 rounded-3xl p-8 max-w-sm w-full text-center shadow-[0_0_50px_rgba(0,225,255,0.2)] animate-in zoom-in-95 duration-500">
               <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-primary/20"><Trophy size={40} className="text-primary animate-bounce" /></div>
-              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic mb-2">Quest Finalized?</h2>
-              <p className="text-secondary text-sm font-medium mb-8 leading-relaxed">Strategic objective <span className="text-white font-bold">"{questManager.pendingQuestBonus.questTitle}"</span> appears fully neutralized. Deploy final completion rewards?</p>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic mb-2">Skill Tree Complete?</h2>
+              <p className="text-secondary text-sm font-medium mb-8 leading-relaxed">Strategic objective <span className="text-white font-bold">"{questManager.pendingQuestBonus.questTitle}"</span> appears fully completed. Deploy final performance rewards?</p>
               <div className="flex flex-col gap-3">
                  <button onClick={handleConfirmQuestBonus} className="w-full bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest py-4 px-4 rounded-xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"><Sparkles size={18} /> Confirm Completion</button>
                  <button onClick={() => questManager.setPendingQuestBonus(null)} className="w-full bg-surface border border-secondary/30 text-secondary hover:text-white font-black uppercase tracking-widest py-4 px-4 rounded-xl transition-all">Not Yet</button>
@@ -354,8 +354,8 @@ const App: React.FC = () => {
                questManager.setQuestToDelete(null);
            }
        }}
-       title="Delete Quest?"
-       description="Are you sure you want to delete this quest? This action cannot be undone."
+       title="Delete Skill Tree?"
+       description="Are you sure you want to delete this skill tree? This action cannot be undone."
       />
 
       <DeleteConfirmModal 
@@ -367,7 +367,7 @@ const App: React.FC = () => {
                challengeManager.setChallengeToDelete(null);
            }
        }}
-       title="Abort Contract?"
+       title="Terminate Challenge?"
        description="Are you sure you want to cancel this challenge? All progress will be lost."
       />
 
@@ -399,8 +399,8 @@ const App: React.FC = () => {
       <SimpleInputModal 
         isOpen={questManager.textModalConfig.isOpen} 
         onClose={() => questManager.setTextModalConfig({ isOpen: false, type: null })} 
-        title={questManager.textModalConfig.type === 'edit-quest' ? 'Modify Quest Identifier' : questManager.textModalConfig.type === 'edit-category' ? 'Modify Section Title' : `Deploy New ${questManager.textModalConfig.type === 'category' ? 'Section' : 'Main Quest'}`} 
-        placeholder="Enter identifier..." 
+        title={questManager.textModalConfig.type === 'edit-quest' ? 'Modify Skill Tree Title' : questManager.textModalConfig.type === 'edit-category' ? 'Modify Phase Title' : `Create New ${questManager.textModalConfig.type === 'category' ? 'Phase' : 'Skill Tree'}`} 
+        placeholder="Enter title..." 
         initialValue={questManager.textModalConfig.initialValue}
         onSubmit={handleTextModalSubmit} 
       />
@@ -424,7 +424,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/95 backdrop-blur-3xl animate-in zoom-in-95 duration-700">
           <Trophy size={160} className="text-primary animate-bounce shadow-primary/50" />
           <h2 className="text-8xl font-black text-primary mt-12 mb-4 tracking-tighter uppercase italic drop-shadow-[0_0_30px_rgba(0,225,255,0.6)]">Level Up</h2>
-          <p className="text-3xl text-white font-black uppercase tracking-widest">Protocol Rank {userManager.showLevelUp.level} Authenticated</p>
+          <p className="text-3xl text-white font-black uppercase tracking-widest">Performance Level {userManager.showLevelUp.level} Achieved</p>
         </div>
       )}
     </div>

@@ -37,16 +37,16 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
       <header className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
         <div>
           <h1 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">
-            Global Network
+            Network
           </h1>
-          <p className="text-secondary font-medium tracking-wide">Manage alliances and competitive contracts.</p>
+          <p className="text-secondary font-medium tracking-wide">Manage connections and competitive challenges.</p>
         </div>
         <button 
           onClick={onCreateChallenge}
           className="flex items-center gap-2 bg-primary hover:bg-cyan-400 text-background px-6 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 w-full md:w-auto justify-center"
         >
           <Plus size={20} strokeWidth={3} />
-          Create Contract
+          Create Challenge
         </button>
       </header>
 
@@ -154,7 +154,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
                       <>
                         <div className="flex justify-between items-center">
                           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                            Team Objective
+                            Shared Objective
                           </span>
                           <span className="text-sm font-bold text-white">
                             {myCompletedTasks} / {totalTasks} TASKS
@@ -312,7 +312,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-black text-white uppercase italic tracking-tight">
-                OPERATIVES
+                NETWORK
               </h2>
               <div className="flex items-center gap-2">
                 <button className="w-9 h-9 rounded-full bg-gray-700/50 hover:bg-gray-700 flex items-center justify-center transition-colors">
@@ -350,7 +350,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
                         {friend.name}
                       </h4>
                       <p className="text-gray-400 text-xs">
-                        {friend.xp} XP • {friend.status === 'online' ? 'Online' : friend.status === 'busy' ? 'In Contract' : 'Offline'}
+                        {friend.xp} XP • {friend.status === 'online' ? 'Online' : friend.status === 'busy' ? 'Active' : 'Offline'}
                       </p>
                     </div>
                   </div>

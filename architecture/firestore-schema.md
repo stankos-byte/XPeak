@@ -93,7 +93,6 @@ enum ChallengeMode {
 ```typescript
 enum TaskStatus {
   PENDING = 'pending',
-  IN_PROGRESS = 'in-progress',
   COMPLETED = 'completed'
 }
 ```
@@ -425,7 +424,7 @@ interface ChallengeTask {
           "skillCategory": "Physical",
           "statusByUser": {
             "user123": "completed",
-            "user456": "in-progress"
+            "user456": "pending"
           }
         },
         {
@@ -644,7 +643,7 @@ interface QuestTask {
         {
           "task_id": "t2",
           "name": "Build Hello World CLI",
-          "status": "in-progress",
+          "status": "pending",
           "difficulty": "Easy",
           "skillCategory": "Professional"
         }

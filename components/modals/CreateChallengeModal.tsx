@@ -211,7 +211,7 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
         <div className="flex items-center justify-between p-5 border-b border-secondary/20 bg-background/40">
           <h2 className="text-xl font-black text-white uppercase tracking-tighter italic flex items-center gap-2">
             <Swords size={20} className="text-primary" />
-            {editingChallenge ? 'Modify Contract' : 'New Contract'}
+            {editingChallenge ? 'Modify Challenge' : 'New Challenge'}
           </h2>
           <button onClick={onClose} className="text-secondary hover:text-primary transition-colors">
             <X size={24} strokeWidth={3} />
@@ -315,8 +315,8 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
           {/* Quest Builder */}
           <div className="border-t border-secondary/20 pt-6 space-y-4">
             <div className="flex items-center justify-between">
-              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest">Quest Structure</label>
-              <span className="text-xs text-secondary font-bold">{categories.length} Section{categories.length !== 1 ? 's' : ''}</span>
+              <label className="block text-[10px] font-black text-secondary uppercase tracking-widest">Challenge Structure</label>
+              <span className="text-xs text-secondary font-bold">{categories.length} Phase{categories.length !== 1 ? 's' : ''}</span>
             </div>
 
             {/* Add/Edit Category Form */}
@@ -325,7 +325,7 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
                 type="text"
                 value={newCategoryTitle}
                 onChange={(e) => setNewCategoryTitle(e.target.value)}
-                placeholder="Section title (e.g., Week 1 - Warmup)"
+                placeholder="Phase title (e.g., Week 1 - Foundation)"
                 className="w-full bg-background border border-secondary/30 rounded-lg p-3 text-white text-sm focus:ring-1 focus:ring-primary focus:border-transparent outline-none font-medium placeholder-secondary/30"
               />
               <div className="flex gap-2">
@@ -336,7 +336,7 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
                       onClick={handleUpdateCategory}
                       className="flex-1 bg-primary hover:bg-cyan-400 text-background font-bold uppercase tracking-widest text-xs py-2 rounded-lg transition-all"
                     >
-                      Update Section
+                      Update Phase
                     </button>
                     <button
                       type="button"
@@ -353,7 +353,7 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
                     disabled={!newCategoryTitle.trim()}
                     className="w-full bg-primary hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-background font-bold uppercase tracking-widest text-xs py-2 rounded-lg transition-all flex items-center justify-center gap-2"
                   >
-                    <Plus size={14} /> Add Section
+                    <Plus size={14} /> Add Phase
                   </button>
                 )}
               </div>
@@ -536,8 +536,8 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
           >
             <Swords size={18} />
             {editingChallenge 
-              ? 'Update Contract' 
-              : (challengeType === 'coop' ? 'Deploy Mission' : 'Deploy Contract')
+              ? 'Update Challenge' 
+              : (challengeType === 'coop' ? 'Create Challenge' : 'Create Challenge')
             }
           </button>
         </form>

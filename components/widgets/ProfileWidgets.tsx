@@ -61,7 +61,7 @@ export const IdentityWidget: React.FC<{
       <div className="flex items-center justify-between mb-3 relative z-10">
         <div className="flex items-center gap-2 text-primary">
           <Crown size={20} />
-          <h3 className="font-black uppercase tracking-widest text-xs">Identity Core</h3>
+          <h3 className="font-black uppercase tracking-widest text-xs">Identity</h3>
         </div>
         {!isCustomizing && (
           <button 
@@ -78,7 +78,7 @@ export const IdentityWidget: React.FC<{
         ) : (
           <p className={`text-xl md:text-2xl font-bold tracking-tight ${user.identity ? 'text-gray-100' : 'text-secondary/40 italic'}`}>{user.identity || "Who are you striving to become?"}</p>
         )}
-        <p className="text-[10px] text-secondary mt-2 uppercase tracking-widest font-black italic">Aspirational Directive</p>
+        <p className="text-[10px] text-secondary mt-2 uppercase tracking-widest font-black italic">Professional Identity</p>
       </div>
     </section>
   );
@@ -91,7 +91,7 @@ export const SkillMatrixWidget: React.FC<{ user: UserProfile } & WidgetProps> = 
       {isCustomizing && (
         <WidgetControls onToggle={onToggle} onMoveUp={onMoveUp} onMoveDown={onMoveDown} enabled={enabled} isFirst={isFirst} isLast={isLast} isCustomizing={isCustomizing} />
       )}
-      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Activity size={16} /> Skill Attributes</h3>
+      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Activity size={16} /> Skill Matrix</h3>
       <div className="bg-surface border border-secondary/20 rounded-xl p-4 shadow-lg h-64 overflow-hidden">
         <SkillRadar user={user} />
       </div>
@@ -106,7 +106,7 @@ export const EvolutionWidget: React.FC<{ user: UserProfile; flashKey: number } &
       {isCustomizing && (
         <WidgetControls onToggle={onToggle} onMoveUp={onMoveUp} onMoveDown={onMoveDown} enabled={enabled} isFirst={isFirst} isLast={isLast} isCustomizing={isCustomizing} />
       )}
-      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={16} /> Evolution</h3>
+      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><TrendingUp size={16} /> Skill Progression</h3>
       <div className="bg-surface border border-secondary/20 rounded-xl p-5 shadow-lg h-64 overflow-y-auto custom-scrollbar">
         <div className="space-y-4">
           {Object.values(SkillCategory)
@@ -201,7 +201,7 @@ export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ 
        {isCustomizing && (
         <WidgetControls onToggle={onToggle} onMoveUp={onMoveUp} onMoveDown={onMoveDown} enabled={enabled} isFirst={isFirst} isLast={isLast} isCustomizing={isCustomizing} />
       )}
-      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Calendar size={16} /> Activity Log</h3>
+      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Calendar size={16} /> Activity Analytics</h3>
       <div className="bg-surface border border-secondary/20 rounded-xl p-4 shadow-xl">
          <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -258,9 +258,9 @@ export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ 
                     <div key={idx} className={`aspect-square rounded border flex flex-col items-center justify-center relative group transition-all duration-300 ${getIntensity(count)} ${isToday ? 'ring-1 ring-white' : ''}`}>
                         <span className="text-[10px] font-bold">{date.getDate()}</span>
                         {count > 0 && <span className="absolute bottom-0.5 w-0.5 h-0.5 rounded-full bg-current"></span>}
-                        {count > 0 && (
+                                {count > 0 && (
                             <div className="absolute bottom-full mb-1 bg-background border border-secondary/20 px-1.5 py-0.5 rounded text-[8px] whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 text-white font-bold">
-                                {count} Tasks
+                                {count} Objectives
                             </div>
                         )}
                     </div>
@@ -286,7 +286,7 @@ export const ObjectivesWidget: React.FC<{
       {isCustomizing && (
         <WidgetControls onToggle={onToggle} onMoveUp={onMoveUp} onMoveDown={onMoveDown} enabled={enabled} isFirst={isFirst} isLast={isLast} isCustomizing={isCustomizing} />
       )}
-      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Mountain size={16} /> Major Objectives</h3>
+      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Mountain size={16} /> Strategic Objectives</h3>
       <div className="bg-surface border border-secondary/20 rounded-xl p-6 shadow-xl">
         {!isCustomizing && (
           <form onSubmit={(e) => { e.preventDefault(); handleAddGoal(val); setVal(''); }} className="flex gap-3 mb-6">
@@ -336,7 +336,7 @@ export const FriendsWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ u
         <WidgetControls onToggle={onToggle} onMoveUp={onMoveUp} onMoveDown={onMoveDown} enabled={enabled} isFirst={isFirst} isLast={isLast} isCustomizing={isCustomizing} />
       )}
       <div className="flex items-center justify-between mb-3 flex-none">
-        <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2"><Users size={16} /> Global Network</h3>
+        <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2"><Users size={16} /> Network</h3>
         {!isCustomizing && (
              <button className="text-secondary hover:text-primary transition-colors">
                 <UserPlus size={16} />
@@ -345,10 +345,10 @@ export const FriendsWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ u
       </div>
       
       <div className="bg-surface border border-secondary/20 rounded-xl overflow-hidden shadow-lg flex-1 flex flex-col min-h-0">
-        <div className="p-3 bg-background/50 border-b border-secondary/10 grid grid-cols-12 gap-4 text-[10px] uppercase font-black text-secondary tracking-widest flex-none">
+            <div className="p-3 bg-background/50 border-b border-secondary/10 grid grid-cols-12 gap-4 text-[10px] uppercase font-black text-secondary tracking-widest flex-none">
             <div className="col-span-1 text-center">#</div>
-            <div className="col-span-7">Operative</div>
-            <div className="col-span-4 text-right">Lvl / XP</div>
+            <div className="col-span-7">Connection</div>
+            <div className="col-span-4 text-right">Level / XP</div>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
             {leaderboard.map((entry, index) => (
@@ -371,7 +371,7 @@ export const FriendsWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ u
                         </div>
                         <div className="flex flex-col">
                             <span className={`text-sm font-bold leading-none ${entry.isMe ? 'text-primary' : 'text-gray-300'}`}>{entry.name}</span>
-                            <span className="text-[10px] text-secondary font-medium mt-1">{entry.isMe ? 'Active Protocol' : entry.online ? 'Online' : 'Offline'}</span>
+                            <span className="text-[10px] text-secondary font-medium mt-1">{entry.isMe ? 'You' : entry.online ? 'Online' : 'Offline'}</span>
                         </div>
                     </div>
                     <div className="col-span-4 text-right">
