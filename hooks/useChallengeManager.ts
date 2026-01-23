@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { Friend, FriendChallenge, ChallengeQuestCategory, ChallengeQuestTask, ChallengeModeType, UserProfile, SkillCategory } from '../types';
 import { calculateXP, calculateLevel, calculateChallengeXP } from '../utils/gamification';
 import { socialService, INITIAL_OPERATIVES, INITIAL_CONTRACTS } from '../services/socialService';
+import { DEBUG_FLAGS } from '../config/debugFlags';
 
 interface UseChallengeManagerReturn {
   challenges: FriendChallenge[];
@@ -46,7 +47,9 @@ export const useChallengeManager = (
         setFriends(operatives);
         setChallenges(contracts);
       }
-    }).catch(console.error);
+    }).catch((error) => {
+      if (DEBUG_FLAGS.challenges) console.error(error);
+    });
 
     // Subscribe to operatives updates (ready for Firestore onSnapshot)
     const unsubscribeOperatives = socialService.onOperativesChange((operatives) => {

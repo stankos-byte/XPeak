@@ -266,8 +266,8 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
             </label>
             <p className="text-xs text-secondary/70 mb-2 font-medium">
               {challengeType === 'coop' 
-                ? '✓ Select multiple teammates for cooperative missions' 
-                : '✓ Select one or more opponents to compete against'}
+                ? '✓ Select teammates for cooperative missions' 
+                : '✓ Select opponents to compete against'}
             </p>
             {friends.length === 0 ? (
               <div className="bg-background border border-secondary/30 rounded-xl p-4 text-secondary font-bold text-center">

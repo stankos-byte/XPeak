@@ -1,4 +1,5 @@
 import { Task, Difficulty, SkillCategory, QuestTask, MainQuest } from '../types';
+import { DEBUG_FLAGS } from '../config/debugFlags';
 
 /**
  * Input validation utilities to prevent corrupted data
@@ -24,7 +25,7 @@ export const validateTask = (task: Partial<Task>): task is Task => {
 export const validateQuestTask = (task: Partial<QuestTask>): task is QuestTask => {
   if (!task.task_id || typeof task.task_id !== 'string') return false;
   if (!task.name || typeof task.name !== 'string') return false;
-  if (!['completed', 'pending', 'in-progress'].includes(task.status as string)) return false;
+  if (typeof task.completed !== 'boolean') return false;
   if (!Object.values(Difficulty).includes(task.difficulty as Difficulty)) return false;
   if (!Object.values(SkillCategory).includes(task.skillCategory as SkillCategory)) return false;
   return true;
@@ -79,7 +80,7 @@ export const safeClone = <T>(obj: T): T | null => {
   try {
     return JSON.parse(JSON.stringify(obj));
   } catch (error) {
-    console.error('Error cloning object:', error);
+    if (DEBUG_FLAGS.errors) console.error('Error cloning object:', error);
     return null;
   }
 };

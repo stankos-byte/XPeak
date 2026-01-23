@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
+import { DEBUG_FLAGS } from '../config/debugFlags';
 
 interface Props {
   children: ReactNode;
@@ -19,7 +20,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    if (DEBUG_FLAGS.errors) console.error('Uncaught error:', error, errorInfo);
     // Here you could send error reports to a logging service
   }
 

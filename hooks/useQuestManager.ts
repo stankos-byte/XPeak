@@ -4,6 +4,7 @@ import { calculateXP, getQuestBonusAmount, isCategoryComplete, isQuestComplete }
 import { storage, STORAGE_KEYS } from '../services/localStorage';
 import { persistenceService } from '../services/persistenceService';
 import { generateQuest } from '../services/aiService';
+import { DEBUG_FLAGS } from '../config/debugFlags';
 
 interface UseQuestManagerReturn {
   mainQuests: MainQuest[];
@@ -69,7 +70,7 @@ export const useQuestManager = (
     const t = c?.tasks.find(x => x.task_id === tid);
     if (!q || !c || !t) return;
 
-    const isCompleting = t.status !== 'completed';
+    const isCompleting = !t.completed;
     const xpResult = calculateXP({ 
       difficulty: t.difficulty, 
       skillCategory: t.skillCategory, 
@@ -81,7 +82,7 @@ export const useQuestManager = (
     let popups: Record<string, number> = { [tid]: baseAmount };
 
     // Section Bonus
-    const isCategoryCompleting = isCompleting && c.tasks.every(task => task.task_id === tid || task.status === 'completed');
+    const isCategoryCompleting = isCompleting && c.tasks.every(task => task.task_id === tid || task.completed);
     const wasCategoryComplete = !isCompleting && isCategoryComplete(c);
     
     if (isCategoryCompleting) {
@@ -96,7 +97,7 @@ export const useQuestManager = (
     const questBonusValue = getQuestBonusAmount(q.categories.length);
     const isQuestCompleting = isCompleting && q.categories.every((cat: QuestCategory) => 
       cat.id === cid 
-        ? cat.tasks.every((task: QuestTask) => task.task_id === tid || task.status === 'completed')
+        ? cat.tasks.every((task: QuestTask) => task.task_id === tid || task.completed)
         : isCategoryComplete(cat)
     );
     const wasQuestCompleteBefore = !isCompleting && isQuestComplete(q);
@@ -115,7 +116,7 @@ export const useQuestManager = (
         ...cat,
         tasks: cat.tasks.map((task: QuestTask) => task.task_id !== tid ? task : {
           ...task,
-          status: isCompleting ? 'completed' : 'pending'
+          completed: isCompleting
         } as QuestTask)
       })
     }));
@@ -147,7 +148,7 @@ export const useQuestManager = (
         tasks: c.tasks.map((t: { name: string; difficulty: Difficulty; skillCategory: SkillCategory }) => ({ 
           task_id: crypto.randomUUID(), 
           name: t.name, 
-          status: 'pending' as const, 
+          completed: false, 
           difficulty: t.difficulty, 
           skillCategory: t.skillCategory 
         })) 
@@ -157,7 +158,7 @@ export const useQuestManager = (
       setMainQuests((prev: MainQuest[]) => prev.map((mq: MainQuest) => mq.id === quest.id ? { ...mq, categories: newCats } : mq));
       if (!expandedNodes.has(quest.id)) toggleNode(quest.id);
     } catch (e) { 
-      console.error(e); 
+      if (DEBUG_FLAGS.quests) console.error(e); 
     } finally { 
       setOraclingQuestId(null); 
     }
@@ -171,7 +172,7 @@ export const useQuestManager = (
     const wasSecComp = isCategoryComplete(c);
     const wasQuestComp = isQuestComplete(q);
     const remainingTasks = c.tasks.filter((t: QuestTask) => t.task_id !== taskId);
-    const isSecNowComp = remainingTasks.length > 0 && remainingTasks.every((t: QuestTask) => t.status === 'completed');
+    const isSecNowComp = remainingTasks.length > 0 && remainingTasks.every((t: QuestTask) => t.completed);
     
     let bonuses: { amount: number; type: string; key: string; }[] = [];
 
@@ -234,7 +235,7 @@ export const useQuestManager = (
             tasks: c.tasks.map((t) => ({
                 task_id: crypto.randomUUID(),
                 name: t.name,
-                status: 'pending' as const,
+                completed: false,
                 difficulty: t.difficulty || Difficulty.EASY,
                 skillCategory: t.skillCategory || SkillCategory.MISC,
                 description: t.description || ''
@@ -261,7 +262,7 @@ export const useQuestManager = (
         const bonus = getQuestBonusAmount(q.categories.length);
         onXPChange(-bonus, `quest-add-revoke-${q.id}`, { [`quest-bonus-${q.id}`]: -bonus });
       }
-      return qs.map((mq: MainQuest) => mq.id !== questId ? { ...mq, categories: mq.categories.map((cat: QuestCategory) => cat.id !== categoryId ? { ...cat, tasks: [...cat.tasks, { task_id: crypto.randomUUID(), name: data.title, status: 'pending' as const, difficulty: data.difficulty, skillCategory: data.skillCategory, description: data.description } as QuestTask] } : cat) } : mq);
+      return qs.map((mq: MainQuest) => mq.id !== questId ? { ...mq, categories: mq.categories.map((cat: QuestCategory) => cat.id !== categoryId ? { ...cat, tasks: [...cat.tasks, { task_id: crypto.randomUUID(), name: data.title, completed: false, difficulty: data.difficulty, skillCategory: data.skillCategory, description: data.description } as QuestTask] } : cat) } : mq);
     });
   }, []);
 

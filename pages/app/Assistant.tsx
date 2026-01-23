@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command } from 'lucide-react';
 import { UserProfile, Task, MainQuest, FriendChallenge, Friend, Difficulty, SkillCategory, ChatMessage } from '../../types';
 import { generateChatResponse, generateFollowUpResponse } from '../../services/aiService';
+import { DEBUG_FLAGS } from '../../config/debugFlags';
 
 interface AIAssistantProps {
   user: UserProfile;
@@ -123,19 +124,19 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
         Identity Core: "${user.identity}"
         
         Active Tasks: ${activeTasksCount}
-        Active Quests: ${quests.length}
+        Active Operations: ${quests.length}
         Friends: ${friends.map(f => f.name).join(', ')}
         
         DECISION PROTOCOL:
-        1. **GENERAL INQUIRY / CHAT**: If the user asks a question, seeks advice, or chats (e.g., "How do I improve performance?", "What is Output Velocity?", "Suggest some objectives"), JUST REPLY with text. DO NOT use any tools.
+        1. **GENERAL INQUIRY / CHAT**: If the user asks a question, seeks advice, or chats (e.g., "How do I improve performance?", "What is Total XP?", "Suggest some tasks"), JUST REPLY with text. DO NOT use any tools.
         2. **SINGLE OBJECTIVE**: ONLY if the user explicitly COMMANDS to add an item (e.g., "Add an objective to...", "Remind me to...", "Create a habit..."), use 'create_task'.
-        3. **SKILL TREE**: ONLY if the user COMMANDS to start a large project (e.g., "Start a skill tree to...", "I want to build a...", "Plan a..."), use 'create_quest'. You MUST generate a full breakdown of phases and objectives for the skill tree.
+        3. **OPERATION**: ONLY if the user COMMANDS to start a large project (e.g., "Start an operation to...", "I want to build a...", "Plan a..."), use 'create_quest'. You MUST generate a full breakdown of phases and tasks for the operation.
         4. **COMPETITION**: Use 'create_challenge' ONLY for explicit competitive requests (e.g., "Challenge [friend] to...", "Create a challenge against..."). 
            CRITICAL: You MUST ALWAYS generate a detailed breakdown with:
            - Multiple phases (at least 2-3 phases/sections)
-           - Multiple objectives per phase (at least 3-5 objectives per section)
-           - Each objective must have: name, difficulty, skillCategory, and optional description
-           - Think of strategic, competitive objectives that both participants can complete
+           - Multiple tasks per phase (at least 3-5 tasks per section)
+           - Each task must have: name, difficulty, skillCategory, and optional description
+           - Think of strategic, competitive tasks that both participants can complete
 
         Use professional terminology. Focus on performance optimization and measurable outcomes.
       `;
@@ -156,7 +157,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                     result.message = `Objective "${call.args.title}" added to system.`;
                 } else if (call.name === 'create_quest') {
                     onAddQuest(call.args.title as string, call.args.categories as any[]);
-                    result.message = `Skill Tree "${call.args.title}" initialized with ${(call.args.categories as any[])?.length || 0} phases.`;
+                    result.message = `Operation "${call.args.title}" initialized with ${(call.args.categories as any[])?.length || 0} phases.`;
                 } else if (call.name === 'create_challenge') {
                     const args = call.args as any;
                     const opponent = friends.find(f => f.name.toLowerCase().includes(args.opponentName.toLowerCase()));
@@ -176,7 +177,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                             }))
                         }));
                         
-                        console.log('Creating challenge with categories:', formattedCategories);
+                        if (DEBUG_FLAGS.challenges) console.log('Creating challenge with categories:', formattedCategories);
                         
                         onAddChallenge({ 
                             title: args.title,
@@ -226,7 +227,7 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
       }
 
     } catch (error) {
-      console.error(error);
+      if (DEBUG_FLAGS.oracle) console.error(error);
       addMessage({ id: crypto.randomUUID(), role: 'model', text: "ERROR: Connection to analytics system unstable. Please retry." });
     } finally {
       setIsTyping(false);

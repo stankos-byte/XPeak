@@ -18,7 +18,7 @@ const Footer: React.FC = () => {
               </h3>
             </div>
             <p className="text-secondary/80 text-sm leading-relaxed mb-6">
-              Professional performance dashboard for ambitious optimizers. Build skill trees, track output velocity, and achieve measurable growth with data-driven productivity.
+              Professional performance dashboard for ambitious optimizers. Build operations, track total XP, and achieve measurable growth with data-driven productivity.
             </p>
           </div>
 

@@ -3,6 +3,8 @@
  * Prevents crashes from localStorage failures (quota exceeded, privacy mode, etc.)
  */
 
+import { DEBUG_FLAGS } from '../config/debugFlags';
+
 export const STORAGE_KEYS = {
   USER: 'lvlup_user',
   TASKS: 'lvlup_tasks',
@@ -21,7 +23,7 @@ class StorageService {
       if (item === null) return defaultValue;
       return JSON.parse(item) as T;
     } catch (error) {
-      console.error(`Error reading "${key}" from localStorage:`, error);
+      if (DEBUG_FLAGS.storage) console.error(`Error reading "${key}" from localStorage:`, error);
       return defaultValue;
     }
   }
@@ -36,14 +38,14 @@ class StorageService {
       localStorage.setItem(key, serialized);
       return true;
     } catch (error) {
-      console.error(`Error writing "${key}" to localStorage:`, error);
+      if (DEBUG_FLAGS.storage) console.error(`Error writing "${key}" to localStorage:`, error);
       
       // Check if quota exceeded
       if (error instanceof DOMException && (
         error.name === 'QuotaExceededError' ||
         error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
       )) {
-        console.warn('localStorage quota exceeded. Consider cleaning up old data.');
+        if (DEBUG_FLAGS.storage) console.warn('localStorage quota exceeded. Consider cleaning up old data.');
       }
       
       return false;
@@ -58,7 +60,7 @@ class StorageService {
       localStorage.removeItem(key);
       return true;
     } catch (error) {
-      console.error(`Error removing "${key}" from localStorage:`, error);
+      if (DEBUG_FLAGS.storage) console.error(`Error removing "${key}" from localStorage:`, error);
       return false;
     }
   }
@@ -73,7 +75,7 @@ class StorageService {
       });
       return true;
     } catch (error) {
-      console.error('Error clearing localStorage:', error);
+      if (DEBUG_FLAGS.storage) console.error('Error clearing localStorage:', error);
       return false;
     }
   }

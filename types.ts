@@ -16,7 +16,7 @@ export enum SkillCategory {
   MISC = 'Default'
 }
 
-export type WidgetId = 'identity' | 'skillMatrix' | 'evolution' | 'objectives' | 'calendar' | 'friends';
+export type WidgetId = 'identity' | 'skillMatrix' | 'evolution' | 'tasks' | 'calendar' | 'friends';
 
 export interface WidgetConfig {
   id: WidgetId;
@@ -31,7 +31,7 @@ export interface ProfileLayout {
 export interface QuestTask {
   task_id: string;
   name: string;
-  status: 'completed' | 'pending' | 'in-progress';
+  completed: boolean;
   difficulty: Difficulty;
   skillCategory: SkillCategory;
   description?: string;

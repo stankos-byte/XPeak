@@ -62,7 +62,7 @@ const TermsOfService = () => {
               <strong>The Global Network:</strong> When interacting with other "Operatives," you must maintain a professional standard of conduct. Harassment, hate speech, or abuse in challenge titles or descriptions will result in immediate "System Deletion".
             </p>
             <p>
-              <strong>Content Rights:</strong> You retain ownership of your "Identity Core" and "Major Objectives". However, by creating tasks and quests, you grant Xpeak a license to process this data to provide the Service.
+              <strong>Content Rights:</strong> You retain ownership of your "Identity Core" and "Major Tasks". However, by creating tasks and quests, you grant Xpeak a license to process this data to provide the Service.
             </p>
           </div>
         </section>

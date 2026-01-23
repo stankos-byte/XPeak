@@ -1,14 +1,14 @@
 # 🗡️ XPeak - Gamified Life Management System
 
-Transform your daily life into an epic RPG adventure! XPeak helps you level up by completing tasks, conquering quests, and building productive habits.
+Transform your daily life into an epic RPG adventure! XPeak helps you level up by completing tasks, executing operations, and building productive habits.
 
 ## 🚀 Features
 
 - **📊 XP & Leveling System** - Gain experience points and level up across multiple skill categories
-- **🎯 Quest System** - Break down large goals into structured, multi-stage quests
+- **🎯 Operations System** - Break down large goals into structured, multi-stage operations
 - **✅ Task Management** - Create and track daily tasks with difficulty-based XP rewards
 - **🔥 Habit Tracking** - Build streaks and maintain daily habits
-- **👥 Social Challenges** - Compete or cooperate with friends on shared objectives
+- **👥 Social Challenges** - Compete or cooperate with friends on shared tasks
 - **🤖 AI Assistant** - Get help breaking down goals and managing your progression
 - **⏱️ Pomodoro Timer** - Built-in focus timer for productivity sessions
 - **📈 Progress Analytics** - Visualize your growth with detailed statistics
@@ -93,14 +93,14 @@ levelup-life/
 ### Difficulty Levels
 - **Easy** (10 XP) - Simple, quick tasks
 - **Medium** (15 XP) - Moderate effort required
-- **Hard** (20 XP) - Challenging objectives
+- **Hard** (20 XP) - Challenging tasks
 - **Epic** (30 XP) - Major accomplishments
 
-### Quest System
-Quests are multi-stage objectives with:
-- **Categories** - Logical sections of the quest
+### Operations System
+Operations are multi-stage tasks with:
+- **Categories** - Logical sections of the operation
 - **Tasks** - Individual actionable items
-- **Bonuses** - +20 XP for completing categories, +80-180 XP for full quests
+- **Bonuses** - +20 XP for completing categories, +80-180 XP for full operations
 
 ### Leveling Curve
 ```
@@ -175,7 +175,7 @@ MIT License - Feel free to use and modify as needed.
 
 1. **Start Small** - Begin with easy tasks to build momentum
 2. **Build Habits** - Use the habit system for daily routines
-3. **Break Down Goals** - Use quests for complex objectives
+3. **Break Down Goals** - Use operations for complex tasks
 4. **Track Progress** - Check your profile regularly
 5. **Challenge Friends** - Social accountability boosts success
 6. **Use the Timer** - Pomodoro technique for focused work

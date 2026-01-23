@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, ProfileLayout, WidgetId } from '../../types';
 import { User, LayoutGrid, Sparkles, Settings } from 'lucide-react';
-import { IdentityWidget, SkillMatrixWidget, EvolutionWidget, ObjectivesWidget, CalendarWidget, FriendsWidget } from '../../components/widgets/ProfileWidgets';
+import { IdentityWidget, SkillMatrixWidget, EvolutionWidget, TasksWidget, CalendarWidget, FriendsWidget } from '../../components/widgets/ProfileWidgets';
 
 interface ProfileViewProps {
   user: UserProfile;
@@ -58,7 +58,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
       case 'evolution': return <EvolutionWidget key={id} user={user} flashKey={flashKey} {...props} />;
       case 'calendar': return <CalendarWidget key={id} user={user} {...props} />;
       case 'friends': return <FriendsWidget key={id} user={user} {...props} />;
-      case 'objectives': return <ObjectivesWidget key={id} user={user} handleAddGoal={handleAddGoal} handleToggleGoal={handleToggleGoal} handleDeleteGoal={handleDeleteGoal} {...props} />;
+      case 'tasks': return <TasksWidget key={id} user={user} handleAddGoal={handleAddGoal} handleToggleGoal={handleToggleGoal} handleDeleteGoal={handleDeleteGoal} {...props} />;
       default: return null;
     }
   };
@@ -115,7 +115,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
           <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2">Performance Metrics</h3>
           <div className="flex items-center gap-1.5 text-primary">
             <Sparkles size={14} className="animate-pulse" />
-            <span className="text-xs font-black uppercase tracking-widest">Output Velocity: {Math.floor(user.totalXP)}</span>
+            <span className="text-xs font-black uppercase tracking-widest">Total XP: {Math.floor(user.totalXP)}</span>
           </div>
         </div>
         <div className="bg-surface border border-secondary/20 rounded-2xl p-6 shadow-xl relative overflow-hidden group">

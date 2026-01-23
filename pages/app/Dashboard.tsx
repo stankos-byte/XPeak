@@ -50,7 +50,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
           <h3 className="text-secondary text-xs font-black uppercase tracking-widest flex items-center gap-2">Performance Metrics</h3>
           <div className="flex items-center gap-1.5 text-primary">
             <Sparkles size={14} className="animate-pulse" />
-            <span className="text-xs font-black uppercase tracking-widest">Output Velocity: {Math.floor(user.totalXP)}</span>
+            <span className="text-xs font-black uppercase tracking-widest">Total XP: {Math.floor(user.totalXP)}</span>
           </div>
         </div>
         <div className="bg-surface border border-secondary/20 rounded-2xl p-6 shadow-xl relative overflow-hidden group">
@@ -73,15 +73,15 @@ const DashboardView: React.FC<DashboardViewProps> = ({
 
       <header className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
         <div>
-          <h2 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Active Objectives</h2>
-          <p className="text-secondary font-medium tracking-wide">{activeTasks.length} objectives currently active.</p>
+          <h2 className="text-xl md:text-2xl font-black text-white mb-1 uppercase tracking-tighter italic">Active Tasks</h2>
+          <p className="text-secondary font-medium tracking-wide">{activeTasks.length} tasks currently active.</p>
         </div>
         <button 
           onClick={() => { setEditingTask(null); setIsModalOpen(true); }}
           className="flex items-center gap-2 bg-primary hover:bg-cyan-400 text-background px-6 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 w-full md:w-auto justify-center"
         >
           <Plus size={20} strokeWidth={3} />
-          Add Objective
+          Add Task
         </button>
       </header>
 
@@ -108,7 +108,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
             className="text-center py-20 bg-surface/30 rounded-2xl border border-dashed border-secondary/20"
           >
             <Trophy className="mx-auto text-secondary/40 mb-4" size={64} />
-            <p className="text-secondary font-black uppercase tracking-widest text-sm">All objectives complete. System optimized.</p>
+            <p className="text-secondary font-black uppercase tracking-widest text-sm">All tasks complete. System optimized.</p>
           </motion.div>
         )}
       </div>

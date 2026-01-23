@@ -13,7 +13,7 @@ const DEFAULT_LAYOUT: ProfileLayout = {
     { id: 'evolution', enabled: true, order: 2 }, 
     { id: 'calendar', enabled: true, order: 3 }, 
     { id: 'friends', enabled: true, order: 4 },
-    { id: 'objectives', enabled: true, order: 5 }
+    { id: 'tasks', enabled: true, order: 5 }
   ] 
 };
 

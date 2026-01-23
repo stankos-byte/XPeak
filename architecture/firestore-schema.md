@@ -77,7 +77,7 @@ enum SkillCategory {
   PROFESSIONAL = 'Professional',
   SOCIAL = 'Social',
   CREATIVE = 'Creative',
-  DEFAULT = 'Default'
+  MISC = 'Default'
 }
 ```
 
@@ -91,10 +91,7 @@ enum ChallengeMode {
 
 ### TaskStatus
 ```typescript
-enum TaskStatus {
-  PENDING = 'pending',
-  COMPLETED = 'completed'
-}
+type TaskStatus = 'pending' | 'completed' | 'in-progress';
 ```
 
 ### FriendRequestStatus
@@ -124,21 +121,6 @@ enum Theme {
 }
 ```
 
-### EvolvedRank
-```typescript
-// Rank titles based on total XP thresholds
-enum EvolvedRank {
-  INITIATE = 'Initiate',           // 0 XP
-  OPERATIVE = 'Operative',         // 500 XP
-  SPECIALIST = 'Specialist',       // 2,000 XP
-  ENFORCER = 'Enforcer',           // 5,000 XP
-  SENTINEL = 'Sentinel',           // 10,000 XP
-  ARCHITECT = 'Architect',         // 25,000 XP
-  OVERSEER = 'Overseer',           // 50,000 XP
-  PRIME = 'Prime'                  // 100,000 XP
-}
-```
-
 ---
 
 ## Top-Level Collections
@@ -155,17 +137,16 @@ The core user document containing profile data, gamification stats, and embedded
 |-------|------|----------|-------------|
 | `uid` | `string` | Yes | Firebase Auth UID (matches document ID) |
 | `email` | `string` | Yes | User's email address |
-| `displayName` | `string` | Yes | User's display name |
+| `name` | `string` | Yes | User's display name |
 | `photoURL` | `string \| null` | No | Profile photo URL |
 | `createdAt` | `timestamp` | Yes | Account creation timestamp |
 | `lastLoginAt` | `timestamp` | Yes | Last login timestamp |
 | `authProvider` | `AuthProvider` | Yes | Authentication provider used |
 | `totalXP` | `number` | Yes | Total XP earned (indexed for leaderboards) |
 | `level` | `number` | Yes | Current level (indexed for leaderboards) |
-| `evolvedRank` | `EvolvedRank` | Yes | Current rank title |
 | `identity` | `string` | No | Aspirational Directive (Identity Core) |
 | `skills` | `SkillsMap` | Yes | Skill progression by category |
-| `goals` | `Goal[]` | Yes | User's objectives |
+| `goals` | `Goal[]` | Yes | User's tasks |
 | `templates` | `TaskTemplate[]` | Yes | Saved task templates |
 | `layout` | `ProfileLayout` | Yes | Widget layout preferences |
 | `settings` | `UserSettings` | Yes | User preferences |
@@ -180,7 +161,7 @@ interface SkillsMap {
   [SkillCategory.PROFESSIONAL]: SkillProgress;
   [SkillCategory.SOCIAL]: SkillProgress;
   [SkillCategory.CREATIVE]: SkillProgress;
-  [SkillCategory.DEFAULT]: SkillProgress;
+  [SkillCategory.MISC]: SkillProgress;
 }
 
 interface SkillProgress {
@@ -223,7 +204,7 @@ interface WidgetConfig {
   order: number;
 }
 
-type WidgetId = 'identity' | 'skillMatrix' | 'evolution' | 'objectives' | 'calendar' | 'friends';
+type WidgetId = 'identity' | 'skillMatrix' | 'evolution' | 'tasks' | 'calendar' | 'friends';
 ```
 
 ##### UserSettings
@@ -246,14 +227,13 @@ interface NotificationSettings {
 {
   "uid": "abc123xyz",
   "email": "user@example.com",
-  "displayName": "Protocol-01",
+  "name": "Protocol-01",
   "photoURL": "https://storage.googleapis.com/...",
   "createdAt": "2026-01-15T10:30:00Z",
   "lastLoginAt": "2026-01-21T14:45:00Z",
   "authProvider": "google",
   "totalXP": 4850,
   "level": 12,
-  "evolvedRank": "Specialist",
   "identity": "I am becoming a disciplined software engineer who ships quality code daily.",
   "skills": {
     "Physical": { "category": "Physical", "xp": 1200, "level": 5 },
@@ -284,7 +264,7 @@ interface NotificationSettings {
       { "id": "evolution", "enabled": true, "order": 2 },
       { "id": "calendar", "enabled": true, "order": 3 },
       { "id": "friends", "enabled": true, "order": 4 },
-      { "id": "objectives", "enabled": true, "order": 5 }
+      { "id": "tasks", "enabled": true, "order": 5 }
     ]
   },
   "settings": {
@@ -352,13 +332,13 @@ Shared challenge documents that both participants can listen to for real-time up
 | `title` | `string` | Yes | Challenge title |
 | `description` | `string` | No | Challenge description/terms |
 | `creatorUID` | `string` | Yes | UID of the challenge creator |
-| `participantUIDs` | `string[]` | Yes | Array of all participant UIDs |
+| `partnerIds` | `string[]` | Yes | Array of all participant/partner UIDs |
 | `mode` | `ChallengeMode` | Yes | Competitive or cooperative |
 | `categories` | `ChallengeCategory[]` | Yes | Challenge breakdown |
 | `status` | `ChallengeStatus` | Yes | active, completed, cancelled |
 | `completedBy` | `string \| null` | No | Winner UID (competitive) or completion marker (coop) |
 | `completedAt` | `timestamp \| null` | No | When challenge was completed |
-| `expiresAt` | `timestamp` | Yes | Challenge deadline |
+| `timeLeft` | `string` | Yes | Time remaining (e.g., "7d", "2h") |
 | `createdAt` | `timestamp` | Yes | When challenge was created |
 
 #### Embedded Types
@@ -392,13 +372,12 @@ interface ChallengeTask {
   skillCategory: SkillCategory;
   
   // For competitive mode: separate status tracking per participant
-  statusByUser?: {
-    [uid: string]: TaskStatus;
-  };
+  myStatus?: 'completed' | 'pending' | 'in-progress';
+  opponentStatus?: 'completed' | 'pending' | 'in-progress';
   
   // For coop mode: unified status and who completed it
-  status?: TaskStatus;
-  completedBy?: string;  // UID of who completed the task
+  status?: 'completed' | 'pending' | 'in-progress';
+  completedBy?: string;  // User ID who completed (for coop tracking)
 }
 ```
 
@@ -410,7 +389,7 @@ interface ChallengeTask {
   "title": "Sprint to Level 15",
   "description": "First operative to reach Level 15 claims the victory.",
   "creatorUID": "user123",
-  "participantUIDs": ["user123", "user456"],
+  "partnerIds": ["user123", "user456"],
   "mode": "competitive",
   "categories": [
     {
@@ -422,20 +401,16 @@ interface ChallengeTask {
           "name": "30min morning workout",
           "difficulty": "Easy",
           "skillCategory": "Physical",
-          "statusByUser": {
-            "user123": "completed",
-            "user456": "pending"
-          }
+          "myStatus": "completed",
+          "opponentStatus": "pending"
         },
         {
           "task_id": "t2",
           "name": "Read 20 pages",
           "difficulty": "Easy",
           "skillCategory": "Mental",
-          "statusByUser": {
-            "user123": "completed",
-            "user456": "pending"
-          }
+          "myStatus": "completed",
+          "opponentStatus": "pending"
         }
       ]
     }
@@ -443,7 +418,7 @@ interface ChallengeTask {
   "status": "active",
   "completedBy": null,
   "completedAt": null,
-  "expiresAt": "2026-01-28T23:59:59Z",
+  "timeLeft": "7d",
   "createdAt": "2026-01-21T10:00:00Z"
 }
 ```
@@ -456,7 +431,7 @@ interface ChallengeTask {
   "title": "Deep Work Protocol",
   "description": "Work together to complete all productivity tasks.",
   "creatorUID": "user123",
-  "participantUIDs": ["user123", "user456"],
+  "partnerIds": ["user123", "user456"],
   "mode": "coop",
   "categories": [
     {
@@ -485,7 +460,7 @@ interface ChallengeTask {
   "status": "active",
   "completedBy": null,
   "completedAt": null,
-  "expiresAt": "2026-01-22T23:59:59Z",
+  "timeLeft": "1d",
   "createdAt": "2026-01-21T06:00:00Z"
 }
 ```
@@ -504,11 +479,11 @@ Stores accepted bidirectional friendships. When a friend request is accepted, a 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `uid` | `string` | Yes | Friend's UID (matches document ID) |
-| `displayName` | `string` | Yes | Friend's display name (denormalized) |
+| `id` | `string` | Yes | Friend's ID (matches document ID) |
+| `name` | `string` | Yes | Friend's display name (denormalized) |
 | `photoURL` | `string \| null` | No | Friend's photo URL (denormalized) |
 | `level` | `number` | Yes | Friend's level (denormalized, update periodically) |
-| `totalXP` | `number` | Yes | Friend's XP (denormalized for leaderboards) |
+| `xp` | `number` | Yes | Friend's XP (denormalized for leaderboards) |
 | `status` | `OnlineStatus` | Yes | Online presence status |
 | `lastActive` | `timestamp` | Yes | Last activity timestamp |
 | `color` | `string` | Yes | Assigned color for UI |
@@ -528,11 +503,11 @@ enum OnlineStatus {
 
 ```json
 {
-  "uid": "friend456",
-  "displayName": "Neon-Drifter",
+  "id": "friend456",
+  "name": "Neon-Drifter",
   "photoURL": "https://storage.googleapis.com/...",
   "level": 9,
-  "totalXP": 3200,
+  "xp": 3200,
   "status": "online",
   "lastActive": "2026-01-21T14:30:00Z",
   "color": "#10b981",
@@ -615,7 +590,7 @@ interface QuestTask {
   task_id: string;
   name: string;
   description?: string;
-  status: TaskStatus;
+  completed: boolean;
   difficulty: Difficulty;
   skillCategory: SkillCategory;
 }
@@ -636,14 +611,14 @@ interface QuestTask {
           "task_id": "t1",
           "name": "Complete Rust Book Chapter 1-3",
           "description": "Cover ownership, borrowing, and lifetimes",
-          "status": "completed",
+          "completed": true,
           "difficulty": "Medium",
           "skillCategory": "Professional"
         },
         {
           "task_id": "t2",
           "name": "Build Hello World CLI",
-          "status": "pending",
+          "completed": false,
           "difficulty": "Easy",
           "skillCategory": "Professional"
         }
@@ -656,7 +631,7 @@ interface QuestTask {
         {
           "task_id": "t3",
           "name": "Learn async/await patterns",
-          "status": "pending",
+          "completed": false,
           "difficulty": "Hard",
           "skillCategory": "Professional"
         }
@@ -684,8 +659,6 @@ AI assistant (Oracle) conversation history, persisted across devices.
 | `role` | `MessageRole` | Yes | Who sent the message |
 | `text` | `string` | No | Message content |
 | `isTool` | `boolean` | No | True if this is a tool call result |
-| `toolName` | `string` | No | Name of the tool called (if applicable) |
-| `toolArgs` | `object` | No | Arguments passed to the tool |
 | `createdAt` | `timestamp` | Yes | Message timestamp |
 
 #### MessageRole
@@ -715,11 +688,6 @@ enum MessageRole {
   "role": "model",
   "text": "I've created a comprehensive TypeScript quest for you with 3 phases...",
   "isTool": true,
-  "toolName": "create_quest",
-  "toolArgs": {
-    "title": "Master TypeScript",
-    "categories": [...]
-  },
   "createdAt": "2026-01-21T10:00:05Z"
 }
 ```
@@ -742,7 +710,6 @@ References to challenges the user is participating in. Points to the shared docu
 | `opponentUIDs` | `string[]` | Yes | Other participants' UIDs |
 | `opponentNames` | `string[]` | Yes | Other participants' names (denormalized) |
 | `status` | `ChallengeStatus` | Yes | Current status |
-| `expiresAt` | `timestamp` | Yes | Challenge deadline |
 | `joinedAt` | `timestamp` | Yes | When user joined the challenge |
 
 #### Example Document
@@ -755,7 +722,6 @@ References to challenges the user is participating in. Points to the shared docu
   "opponentUIDs": ["user456"],
   "opponentNames": ["Neon-Drifter"],
   "status": "active",
-  "expiresAt": "2026-01-28T23:59:59Z",
   "joinedAt": "2026-01-21T10:00:00Z"
 }
 ```
@@ -855,7 +821,7 @@ Fields: level (DESC), totalXP (DESC)
 #### Friends Leaderboards
 ```
 Collection Group: friends
-Fields: totalXP (DESC)
+Fields: xp (DESC)
 ```
 
 #### Friend Requests
@@ -872,7 +838,7 @@ Fields: fromUID (ASC), status (ASC), createdAt (DESC)
 #### Challenges by Participant
 ```
 Collection: challenges
-Fields: participantUIDs (ARRAY_CONTAINS), status (ASC), createdAt (DESC)
+Fields: partnerIds (ARRAY_CONTAINS), status (ASC), createdAt (DESC)
 ```
 
 #### History by Date
@@ -891,7 +857,6 @@ Fields: date (DESC)
 | `friendRequests` | `toUID` | ASC |
 | `friendRequests` | `fromUID` | ASC |
 | `challenges` | `status` | ASC |
-| `challenges` | `expiresAt` | ASC |
 
 ---
 
@@ -978,7 +943,7 @@ service cloud.firestore {
     match /challenges/{challengeId} {
       // Participants can read and write
       allow read, write: if request.auth != null 
-                         && request.auth.uid in resource.data.participantUIDs;
+                         && request.auth.uid in resource.data.partnerIds;
       
       // Creator can create
       allow create: if request.auth != null 
@@ -1015,7 +980,6 @@ service cloud.firestore {
 | `syncFriendData` | Scheduled (daily) | Update denormalized friend data |
 | `archiveOldHistory` | Scheduled (daily) | Move history > 60 days to archive |
 | `cleanupExpiredChallenges` | Scheduled (hourly) | Mark expired challenges |
-| `updateEvolvedRank` | Firestore update | Update rank when XP changes |
 
 ---
 

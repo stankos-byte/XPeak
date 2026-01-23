@@ -10,6 +10,8 @@
  *   const value = persistence.get('key', defaultValue);
  */
 
+import { DEBUG_FLAGS } from '../config/debugFlags';
+
 export interface StorageAdapter {
   /**
    * Get a value from storage
@@ -37,7 +39,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       if (item === null) return defaultValue;
       return JSON.parse(item) as T;
     } catch (error) {
-      console.error(`Error reading "${key}" from localStorage:`, error);
+      if (DEBUG_FLAGS.storage) console.error(`Error reading "${key}" from localStorage:`, error);
       return defaultValue;
     }
   }
@@ -48,14 +50,14 @@ export class LocalStorageAdapter implements StorageAdapter {
       localStorage.setItem(key, serialized);
       return true;
     } catch (error) {
-      console.error(`Error writing "${key}" to localStorage:`, error);
+      if (DEBUG_FLAGS.storage) console.error(`Error writing "${key}" to localStorage:`, error);
       
       // Check if quota exceeded
       if (error instanceof DOMException && (
         error.name === 'QuotaExceededError' ||
         error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
       )) {
-        console.warn('localStorage quota exceeded. Consider cleaning up old data.');
+        if (DEBUG_FLAGS.storage) console.warn('localStorage quota exceeded. Consider cleaning up old data.');
       }
       
       return false;
@@ -121,7 +123,7 @@ export class PersistenceService {
     // Handle promise result if adapter returns Promise
     if (result instanceof Promise) {
       result.catch((error) => {
-        console.error(`Error flushing "${key}" to storage:`, error);
+        if (DEBUG_FLAGS.storage) console.error(`Error flushing "${key}" to storage:`, error);
       });
     }
 
@@ -162,7 +164,7 @@ export class PersistenceService {
       try {
         localStorage.removeItem(key);
       } catch (error) {
-        console.error(`Error removing "${key}" from storage:`, error);
+        if (DEBUG_FLAGS.storage) console.error(`Error removing "${key}" from storage:`, error);
       }
     }
   }

@@ -11,6 +11,7 @@
  */
 
 import { Friend, FriendChallenge } from '../types';
+import { DEBUG_FLAGS } from '../config/debugFlags';
 
 // Type aliases for domain-specific terminology
 export type Operative = Friend;
@@ -95,7 +96,7 @@ const setCacheTimestamp = (): void => {
   try {
     localStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
   } catch (error) {
-    console.error('Error setting cache timestamp:', error);
+    if (DEBUG_FLAGS.storage) console.error('Error setting cache timestamp:', error);
   }
 };
 
@@ -112,7 +113,7 @@ const getCachedOperatives = (): Operative[] | null => {
     if (!cached) return null;
     return JSON.parse(cached) as Operative[];
   } catch (error) {
-    console.error('Error reading cached operatives:', error);
+    if (DEBUG_FLAGS.storage) console.error('Error reading cached operatives:', error);
     return null;
   }
 };
@@ -122,7 +123,7 @@ const setCachedOperatives = (operatives: Operative[]): void => {
     localStorage.setItem(OPERATIVES_CACHE_KEY, JSON.stringify(operatives));
     setCacheTimestamp();
   } catch (error) {
-    console.error('Error caching operatives:', error);
+    if (DEBUG_FLAGS.storage) console.error('Error caching operatives:', error);
   }
 };
 
@@ -133,7 +134,7 @@ const getCachedContracts = (): Contract[] | null => {
     if (!cached) return null;
     return JSON.parse(cached) as Contract[];
   } catch (error) {
-    console.error('Error reading cached contracts:', error);
+    if (DEBUG_FLAGS.storage) console.error('Error reading cached contracts:', error);
     return null;
   }
 };
@@ -143,7 +144,7 @@ const setCachedContracts = (contracts: Contract[]): void => {
     localStorage.setItem(CONTRACTS_CACHE_KEY, JSON.stringify(contracts));
     setCacheTimestamp();
   } catch (error) {
-    console.error('Error caching contracts:', error);
+    if (DEBUG_FLAGS.storage) console.error('Error caching contracts:', error);
   }
 };
 
@@ -184,8 +185,12 @@ export class SocialService {
       this.notifyContractsListeners();
       
       // Fetch fresh data in background (don't await)
-      this.fetchOperatives().catch(console.error);
-      this.fetchContracts().catch(console.error);
+      this.fetchOperatives().catch((error) => {
+        if (DEBUG_FLAGS.social) console.error(error);
+      });
+      this.fetchContracts().catch((error) => {
+        if (DEBUG_FLAGS.social) console.error(error);
+      });
       
       return { operatives: cachedOperatives, contracts: cachedContracts };
     }
@@ -227,7 +232,7 @@ export class SocialService {
         
         return operatives;
       } catch (error) {
-        console.error('Error fetching operatives:', error);
+        if (DEBUG_FLAGS.social) console.error('Error fetching operatives:', error);
         // Fallback to mock data on error
         const fallback = [...MOCK_OPERATIVES];
         this.currentOperatives = fallback;
@@ -269,7 +274,7 @@ export class SocialService {
         
         return contracts;
       } catch (error) {
-        console.error('Error fetching contracts:', error);
+        if (DEBUG_FLAGS.social) console.error('Error fetching contracts:', error);
         // Fallback to mock data on error
         const fallback = [...MOCK_CONTRACTS];
         this.currentContracts = fallback;
@@ -373,7 +378,7 @@ export class SocialService {
       try {
         listener(this.currentOperatives);
       } catch (error) {
-        console.error('Error in operatives listener:', error);
+        if (DEBUG_FLAGS.social) console.error('Error in operatives listener:', error);
       }
     });
   }
@@ -386,7 +391,7 @@ export class SocialService {
       try {
         listener(this.currentContracts);
       } catch (error) {
-        console.error('Error in contracts listener:', error);
+        if (DEBUG_FLAGS.social) console.error('Error in contracts listener:', error);
       }
     });
   }
@@ -400,7 +405,7 @@ export class SocialService {
       localStorage.removeItem(CONTRACTS_CACHE_KEY);
       localStorage.removeItem(CACHE_TIMESTAMP_KEY);
     } catch (error) {
-      console.error('Error clearing cache:', error);
+      if (DEBUG_FLAGS.storage) console.error('Error clearing cache:', error);
     }
   }
 }

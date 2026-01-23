@@ -260,7 +260,7 @@ export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ 
                         {count > 0 && <span className="absolute bottom-0.5 w-0.5 h-0.5 rounded-full bg-current"></span>}
                                 {count > 0 && (
                             <div className="absolute bottom-full mb-1 bg-background border border-secondary/20 px-1.5 py-0.5 rounded text-[8px] whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none z-10 text-white font-bold">
-                                {count} Objectives
+                                {count} Tasks
                             </div>
                         )}
                     </div>
@@ -272,11 +272,11 @@ export const CalendarWidget: React.FC<{ user: UserProfile } & WidgetProps> = ({ 
   );
 }
 
-export const ObjectivesWidget: React.FC<{ 
+export const TasksWidget: React.FC<{ 
   user: UserProfile; 
   handleAddGoal: (t: string) => void; 
   handleToggleGoal: (id: string) => void; 
-  handleDeleteGoal: (id: string) => void; 
+  handleDeleteGoal: (id: string) => void;
 } & WidgetProps> = ({ user, handleAddGoal, handleToggleGoal, handleDeleteGoal, isCustomizing, onToggle, onMoveUp, onMoveDown, enabled, isFirst, isLast }) => {
   const [val, setVal] = useState('');
   if (!enabled && !isCustomizing) return null;
@@ -286,7 +286,7 @@ export const ObjectivesWidget: React.FC<{
       {isCustomizing && (
         <WidgetControls onToggle={onToggle} onMoveUp={onMoveUp} onMoveDown={onMoveDown} enabled={enabled} isFirst={isFirst} isLast={isLast} isCustomizing={isCustomizing} />
       )}
-      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Mountain size={16} /> Strategic Objectives</h3>
+      <h3 className="text-secondary text-xs font-black mb-3 uppercase tracking-widest flex items-center gap-2"><Mountain size={16} /> Long Term Goals</h3>
       <div className="bg-surface border border-secondary/20 rounded-xl p-6 shadow-xl">
         {!isCustomizing && (
           <form onSubmit={(e) => { e.preventDefault(); handleAddGoal(val); setVal(''); }} className="flex gap-3 mb-6">

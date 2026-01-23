@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { Difficulty, SkillCategory, ChatMessage } from "../types";
+import { DEBUG_FLAGS } from "../config/debugFlags";
 
 /**
  * AI Service for handling all Google Gemini API interactions.
@@ -15,7 +16,7 @@ import { Difficulty, SkillCategory, ChatMessage } from "../types";
 const getApiKey = (): string => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('⚠️  VITE_GEMINI_API_KEY not found in environment variables');
+    if (DEBUG_FLAGS.oracle) console.warn('⚠️  VITE_GEMINI_API_KEY not found in environment variables');
   }
   return apiKey || '';
 };
@@ -45,8 +46,8 @@ export const generateQuest = async (questTitle: string): Promise<Array<{
     const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: `Break down the skill tree "${questTitle}" into strategic phases and objectives. 
-      For each phase, provide a comprehensive list of objectives. 
+      contents: `Break down the operation "${questTitle}" into strategic phases and tasks. 
+      For each phase, provide a comprehensive list of tasks. 
       Do not limit yourself to a small number; if a phase is complex, provide 5-10 actionable steps to fully complete it. 
       Adjust the objective count based on the complexity of the phase.`,
       config: { 
@@ -79,7 +80,7 @@ export const generateQuest = async (questTitle: string): Promise<Array<{
     const data = JSON.parse(response.text || '[]');
     return data;
   } catch (error) {
-    console.error('Error generating quest:', error);
+    if (DEBUG_FLAGS.oracle) console.error('Error generating quest:', error);
     throw error;
   }
 };
@@ -119,7 +120,7 @@ export const analyzeTask = async (taskTitle: string): Promise<{
       suggestedDescription: result.suggestedDescription
     };
   } catch (error) {
-    console.error('Error analyzing task:', error);
+    if (DEBUG_FLAGS.oracle) console.error('Error analyzing task:', error);
     throw error;
   }
 };
@@ -146,11 +147,11 @@ export const getAITools = (): FunctionDeclaration[] => {
 
   const createQuestTool: FunctionDeclaration = {
     name: "create_quest",
-    description: "Initialize a new Skill Tree. Use this ONLY for large, multi-step projects. You MUST generate a detailed breakdown of 'categories' (phases) and 'tasks' (objectives) to populate the skill tree plan.",
+    description: "Initialize a new Operation. Use this ONLY for large, multi-step projects. You MUST generate a detailed breakdown of 'categories' (phases) and 'tasks' to populate the operation plan.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        title: { type: Type.STRING, description: "The strategic title of the skill tree" },
+        title: { type: Type.STRING, description: "The strategic title of the operation" },
         categories: {
             type: Type.ARRAY,
             description: "Detailed breakdown of the quest into phases/sections",
@@ -183,7 +184,7 @@ export const getAITools = (): FunctionDeclaration[] => {
 
   const createChallengeTool: FunctionDeclaration = {
     name: "create_challenge",
-    description: "Create a competitive challenge against a network connection. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' (objectives) for the challenge. Example: For a fitness challenge, create phases like 'Week 1: Foundation', 'Week 2: Intensity', each with multiple specific objectives like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without objectives!",
+    description: "Create a competitive challenge against a network connection. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' for the challenge. Example: For a fitness challenge, create phases like 'Week 1: Foundation', 'Week 2: Intensity', each with multiple specific tasks like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without tasks!",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -263,7 +264,7 @@ export const generateChatResponse = async (
       candidates: response.candidates
     };
   } catch (error) {
-    console.error('Error generating chat response:', error);
+    if (DEBUG_FLAGS.oracle) console.error('Error generating chat response:', error);
     throw error;
   }
 };
@@ -296,7 +297,7 @@ export const generateFollowUpResponse = async (
     
     return finalResponse.text || "Directives executed.";
   } catch (error) {
-    console.error('Error generating follow-up response:', error);
+    if (DEBUG_FLAGS.oracle) console.error('Error generating follow-up response:', error);
     throw error;
   }
 };

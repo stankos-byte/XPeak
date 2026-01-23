@@ -189,7 +189,7 @@ export const calculateUserSkillXP = (
  * Checks if a quest category is complete (all tasks completed)
  */
 export const isCategoryComplete = (category: QuestCategory): boolean => 
-  category.tasks.length > 0 && category.tasks.every(t => t.status === 'completed');
+  category.tasks.length > 0 && category.tasks.every(t => t.completed);
 
 /**
  * Checks if a quest is complete (all categories complete)

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { DEBUG_FLAGS } from '../config/debugFlags';
 
 interface UseTimerReturn {
   timeLeft: number;
@@ -44,7 +45,7 @@ export const useTimer = (
       oscillator.start(audioContext.currentTime);
       oscillator.stop(audioContext.currentTime + 0.8);
     } catch (error) {
-      console.log('Audio playback not supported');
+      if (DEBUG_FLAGS.timer) console.log('Audio playback not supported');
     }
   }, []);
 

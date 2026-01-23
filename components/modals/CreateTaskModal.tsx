@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Difficulty, SkillCategory, Task, TaskTemplate } from '../../types';
 import { X, ChevronDown, Save, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import { analyzeTask } from '../../services/aiService';
+import { DEBUG_FLAGS } from '../../config/debugFlags';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -62,7 +63,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       if (result.skillCategory) setSkillCategory(result.skillCategory);
       if (result.suggestedDescription && !description) setDescription(result.suggestedDescription);
     } catch (error) {
-      console.error("Smart Audit failed:", error);
+      if (DEBUG_FLAGS.tasks) console.error("Smart Audit failed:", error);
     } finally {
       setIsAuditing(false);
     }

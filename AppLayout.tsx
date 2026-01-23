@@ -2,23 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Task, 
-  UserProfile, 
-  SkillCategory, 
-  Difficulty,
-  Goal,
-  MainQuest,
-  QuestCategory,
-  QuestTask,
-  TaskTemplate,
   ProfileLayout,
-  Friend,
   FriendChallenge,
   ChatMessage,
-  ChallengeQuestCategory,
-  ChallengeQuestTask,
-  ChallengeModeType
 } from './types';
-import { getLevelProgress } from './utils/gamification';
 import { useTimer } from './hooks/useTimer';
 import { useUserManager } from './hooks/useUserManager';
 import { useTaskManager } from './hooks/useTaskManager';
@@ -57,7 +44,7 @@ const DEFAULT_LAYOUT: ProfileLayout = {
     { id: 'evolution', enabled: true, order: 2 }, 
     { id: 'calendar', enabled: true, order: 3 }, 
     { id: 'friends', enabled: true, order: 4 },
-    { id: 'objectives', enabled: true, order: 5 }
+    { id: 'tasks', enabled: true, order: 5 }
   ] 
 };
 
@@ -78,23 +65,23 @@ const App: React.FC = () => {
   
   // AI Assistant state
   const [aiMessages, setAiMessages] = useState<ChatMessage[]>([
-    { id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active objectives, and network protocols. How may I assist in optimizing your output velocity today?` }
+    { id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active tasks, and network protocols. How may I assist in optimizing your total XP today?` }
   ]);
 
   // Update AI message when user name changes
   useEffect(() => {
     if (aiMessages.length === 1 && aiMessages[0].id === 'init') {
-      setAiMessages([{ id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active objectives, and network protocols. How may I assist in optimizing your output velocity today?` }]);
+      setAiMessages([{ id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active tasks, and network protocols. How may I assist in optimizing your total XP today?` }]);
     }
   }, [userManager.user.name]);
 
   // Wrapper functions for task handlers
   const handleCompleteTask = (id: string) => {
-    taskManager.handleCompleteTask(id, userManager.applyGlobalXPChange);
+    taskManager.handleCompleteTask(id);
   };
 
   const handleUncompleteTask = (id: string) => {
-    taskManager.handleUncompleteTask(id, userManager.applyGlobalXPChange);
+    taskManager.handleUncompleteTask(id);
   };
 
   const handleDeleteTask = (id: string) => {
@@ -198,7 +185,7 @@ const App: React.FC = () => {
 
   const navItems = [
     { id: 'dashboard', icon: CheckSquare, label: 'Dashboard' }, 
-    { id: 'quests', icon: Map, label: 'Skill Trees' }, 
+    { id: 'quests', icon: Map, label: 'Operations' }, 
     { id: 'tools', icon: BookOpen, label: 'Tools' }, 
     { id: 'friends', icon: Users, label: 'Network' },
     { id: 'assistant', icon: Bot, label: 'Analytics' },
@@ -335,7 +322,7 @@ const App: React.FC = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/90 backdrop-blur-xl animate-in fade-in duration-300">
            <div className="bg-surface border-2 border-primary/40 rounded-3xl p-8 max-w-sm w-full text-center shadow-[0_0_50px_rgba(0,225,255,0.2)] animate-in zoom-in-95 duration-500">
               <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-primary/20"><Trophy size={40} className="text-primary animate-bounce" /></div>
-              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic mb-2">Skill Tree Complete?</h2>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tighter italic mb-2">Operation Complete?</h2>
               <p className="text-secondary text-sm font-medium mb-8 leading-relaxed">Strategic objective <span className="text-white font-bold">"{questManager.pendingQuestBonus.questTitle}"</span> appears fully completed. Deploy final performance rewards?</p>
               <div className="flex flex-col gap-3">
                  <button onClick={handleConfirmQuestBonus} className="w-full bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest py-4 px-4 rounded-xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"><Sparkles size={18} /> Confirm Completion</button>
@@ -354,8 +341,8 @@ const App: React.FC = () => {
                questManager.setQuestToDelete(null);
            }
        }}
-       title="Delete Skill Tree?"
-       description="Are you sure you want to delete this skill tree? This action cannot be undone."
+       title="Delete Operation?"
+       description="Are you sure you want to delete this operation? This action cannot be undone."
       />
 
       <DeleteConfirmModal 
@@ -399,7 +386,7 @@ const App: React.FC = () => {
       <SimpleInputModal 
         isOpen={questManager.textModalConfig.isOpen} 
         onClose={() => questManager.setTextModalConfig({ isOpen: false, type: null })} 
-        title={questManager.textModalConfig.type === 'edit-quest' ? 'Modify Skill Tree Title' : questManager.textModalConfig.type === 'edit-category' ? 'Modify Phase Title' : `Create New ${questManager.textModalConfig.type === 'category' ? 'Phase' : 'Skill Tree'}`} 
+        title={questManager.textModalConfig.type === 'edit-quest' ? 'Modify Operation Title' : questManager.textModalConfig.type === 'edit-category' ? 'Modify Phase Title' : `Create New ${questManager.textModalConfig.type === 'category' ? 'Phase' : 'Operation'}`} 
         placeholder="Enter title..." 
         initialValue={questManager.textModalConfig.initialValue}
         onSubmit={handleTextModalSubmit} 

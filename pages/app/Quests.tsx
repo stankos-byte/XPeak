@@ -40,15 +40,15 @@ const QuestsView: React.FC<QuestsViewProps> = ({
     <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-8 duration-500 pb-24">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4 px-1">
         <div>
-          <h1 className="text-2xl md:text-3xl font-black text-white mb-1 uppercase tracking-tighter italic">Skill Trees</h1>
-          <p className="text-secondary font-medium tracking-wide">Strategic breakdown of complex objectives into mastery paths.</p>
+          <h1 className="text-2xl md:text-3xl font-black text-white mb-1 uppercase tracking-tighter italic">Operations</h1>
+          <p className="text-secondary font-medium tracking-wide">Strategic breakdown of complex tasks into mastery paths.</p>
         </div>
         <button 
           onClick={() => setTextModalConfig({ isOpen: true, type: 'quest' })}
           className="flex items-center gap-2 bg-primary hover:bg-cyan-400 text-background px-6 py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-primary/20 w-full md:w-auto justify-center"
         >
           <Plus size={20} strokeWidth={3} />
-          Create Skill Tree
+          Create Operation
         </button>
       </header>
       
@@ -84,7 +84,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                       <button 
                         onClick={(e) => { e.stopPropagation(); setTextModalConfig({ isOpen: true, type: 'edit-quest', parentId: mainQuest.id, initialValue: mainQuest.title }); }}
                         className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-all"
-                        title="Edit Skill Tree Title"
+                        title="Edit Operation Title"
                       >
                         <Pencil size={20} />
                       </button>
@@ -106,7 +106,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteQuest(mainQuest.id); }}
                         className="p-2.5 rounded-xl border border-secondary/20 text-secondary hover:text-red-400 hover:border-red-400/40 transition-all"
-                        title="Delete Skill Tree"
+                        title="Delete Operation"
                       >
                         <Trash2 size={20} />
                       </button>
@@ -185,7 +185,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                           <button 
                             onClick={() => setQuestTaskConfig({ isOpen: true, questId: mainQuest.id, categoryId: category.id })}
                             className="p-1.5 text-secondary hover:text-primary transition-all"
-                            title="Add Objective"
+                            title="Add Task"
                           >
                             <PlusCircle size={18} />
                           </button>
@@ -207,7 +207,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                             description: task.description,
                             difficulty: task.difficulty,
                             skillCategory: task.skillCategory,
-                            completed: task.status === 'completed',
+                            completed: task.completed,
                             isHabit: false,
                             streak: 0,
                             lastCompletedDate: null,
@@ -229,7 +229,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                         })}
                         
                         {category.tasks.length === 0 && (
-                          <p className="text-[10px] text-secondary/40 font-black uppercase tracking-widest p-4 border border-dashed border-secondary/10 rounded-xl text-center">No objectives in this phase</p>
+                          <p className="text-[10px] text-secondary/40 font-black uppercase tracking-widest p-4 border border-dashed border-secondary/10 rounded-xl text-center">No tasks in this phase</p>
                         )}
                       </div>
                     </div>
