@@ -1,33 +1,67 @@
-import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
+import { getFunctions, httpsCallable } from "firebase/functions";
+import { getApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { Difficulty, SkillCategory, ChatMessage } from "../types";
 import { DEBUG_FLAGS } from "../config/debugFlags";
+
+// Type definitions for AI tools (matching Google GenAI format)
+type Type = "STRING" | "NUMBER" | "BOOLEAN" | "OBJECT" | "ARRAY";
+
+interface FunctionDeclaration {
+  name: string;
+  description: string;
+  parameters: {
+    type: Type;
+    properties?: Record<string, any>;
+    items?: any;
+    enum?: string[];
+    required?: string[];
+    description?: string;
+  };
+}
 
 /**
  * AI Service for handling all Google Gemini API interactions.
  * 
- * This service abstracts the Google SDK so it can be easily replaced
- * with a Firebase Cloud Function or backend proxy in the future.
- * 
- * The API key is accessed via import.meta.env.VITE_GEMINI_API_KEY
- * to follow Vite's environment variable conventions.
+ * All AI requests are proxied through Firebase Cloud Functions
+ * to keep the API key secure on the server-side.
  */
 
-// Get API key from environment variables
-const getApiKey = (): string => {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) {
-    if (DEBUG_FLAGS.oracle) console.warn('⚠️  VITE_GEMINI_API_KEY not found in environment variables');
+// Initialize Firebase if not already initialized
+const initializeFirebase = () => {
+  if (getApps().length === 0) {
+    // Firebase config should be provided via environment variables
+    const firebaseConfig = {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    };
+
+    if (!firebaseConfig.projectId) {
+      throw new Error(
+        "Firebase is not configured. Please set VITE_FIREBASE_PROJECT_ID and other Firebase config in your .env file."
+      );
+    }
+
+    return initializeApp(firebaseConfig);
   }
-  return apiKey || '';
+  return getApp();
 };
 
-// Initialize Google GenAI client
-const getAIClient = () => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('Gemini API key is not configured. Please set VITE_GEMINI_API_KEY in your .env file.');
-  }
-  return new GoogleGenAI({ apiKey });
+// Get Firebase Functions instance
+const getFirebaseFunctions = () => {
+  const app = initializeFirebase();
+  return getFunctions(app);
+};
+
+// Get the geminiProxy callable function
+const getGeminiProxy = () => {
+  const functions = getFirebaseFunctions();
+  return httpsCallable(functions, "geminiProxy");
 };
 
 /**
@@ -43,44 +77,34 @@ export const generateQuest = async (questTitle: string): Promise<Array<{
   }>;
 }>> => {
   try {
-    const ai = getAIClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Break down the operation "${questTitle}" into strategic phases and tasks. 
-      For each phase, provide a comprehensive list of tasks. 
-      Do not limit yourself to a small number; if a phase is complex, provide 5-10 actionable steps to fully complete it. 
-      Adjust the objective count based on the complexity of the phase.`,
-      config: { 
-        responseMimeType: "application/json", 
-        responseSchema: { 
-          type: Type.ARRAY, 
-          items: { 
-            type: Type.OBJECT, 
-            properties: { 
-              title: { type: Type.STRING }, 
-              tasks: { 
-                type: Type.ARRAY, 
-                items: { 
-                  type: Type.OBJECT, 
-                  properties: { 
-                    name: { type: Type.STRING }, 
-                    difficulty: { type: Type.STRING, enum: Object.values(Difficulty) }, 
-                    skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) } 
-                  }, 
-                  required: ["name", "difficulty", "skillCategory"] 
-                } 
-              } 
-            }, 
-            required: ["title", "tasks"] 
-          } 
-        } 
-      }
+    // Verify user is authenticated
+    const auth = getAuth();
+    if (!auth.currentUser) {
+      throw new Error("User must be authenticated to use AI features");
+    }
+
+    const geminiProxy = getGeminiProxy();
+    const result = await geminiProxy({
+      action: "generateQuest",
+      payload: { questTitle },
     });
+
+    if (result.data.success && result.data.data) {
+      return result.data.data;
+    }
+
+    throw new Error("Failed to generate quest");
+  } catch (error: any) {
+    if (DEBUG_FLAGS.oracle) console.error("Error generating quest:", error);
     
-    const data = JSON.parse(response.text || '[]');
-    return data;
-  } catch (error) {
-    if (DEBUG_FLAGS.oracle) console.error('Error generating quest:', error);
+    // Provide user-friendly error messages
+    if (error.code === "unauthenticated") {
+      throw new Error("Please sign in to use AI features");
+    }
+    if (error.code === "permission-denied") {
+      throw new Error("You don't have permission to use this feature");
+    }
+    
     throw error;
   }
 };
@@ -95,32 +119,38 @@ export const analyzeTask = async (taskTitle: string): Promise<{
   suggestedDescription?: string;
 }> => {
   try {
-    const ai = getAIClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Analyze this task title: "${taskTitle}". Determine the most appropriate SkillCategory (Physical, Mental, Professional, Social, Creative, Default) and Difficulty (Easy, Medium, Hard, Epic). Use 'Default' if the task doesn't fit specific skills.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
-            skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) },
-            suggestedDescription: { type: Type.STRING }
-          },
-          required: ["difficulty", "skillCategory"]
-        }
-      }
+    // Verify user is authenticated
+    const auth = getAuth();
+    if (!auth.currentUser) {
+      throw new Error("User must be authenticated to use AI features");
+    }
+
+    const geminiProxy = getGeminiProxy();
+    const result = await geminiProxy({
+      action: "analyzeTask",
+      payload: { taskTitle },
     });
 
-    const result = JSON.parse(response.text || '{}');
-    return {
-      difficulty: result.difficulty as Difficulty,
-      skillCategory: result.skillCategory as SkillCategory,
-      suggestedDescription: result.suggestedDescription
-    };
-  } catch (error) {
-    if (DEBUG_FLAGS.oracle) console.error('Error analyzing task:', error);
+    if (result.data.success && result.data.data) {
+      return {
+        difficulty: result.data.data.difficulty as Difficulty,
+        skillCategory: result.data.data.skillCategory as SkillCategory,
+        suggestedDescription: result.data.data.suggestedDescription,
+      };
+    }
+
+    throw new Error("Failed to analyze task");
+  } catch (error: any) {
+    if (DEBUG_FLAGS.oracle) console.error("Error analyzing task:", error);
+    
+    // Provide user-friendly error messages
+    if (error.code === "unauthenticated") {
+      throw new Error("Please sign in to use AI features");
+    }
+    if (error.code === "permission-denied") {
+      throw new Error("You don't have permission to use this feature");
+    }
+    
     throw error;
   }
 };
@@ -133,13 +163,13 @@ export const getAITools = (): FunctionDeclaration[] => {
     name: "create_task",
     description: "Create a new objective, habit, or to-do item. EXECUTE THIS ONLY when the user explicitly says 'add', 'create', 'remind me', or 'set an objective'. DO NOT use this for general advice or suggestions.",
     parameters: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        title: { type: Type.STRING, description: "Title of the task" },
-        description: { type: Type.STRING, description: "Brief description of the objective" },
-        difficulty: { type: Type.STRING, enum: Object.values(Difficulty), description: "Difficulty level" },
-        skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory), description: "Related skill attribute" },
-        isHabit: { type: Type.BOOLEAN, description: "True if this is a recurring habit, False if one-time task" }
+        title: { type: "STRING", description: "Title of the task" },
+        description: { type: "STRING", description: "Brief description of the objective" },
+        difficulty: { type: "STRING", enum: Object.values(Difficulty), description: "Difficulty level" },
+        skillCategory: { type: "STRING", enum: Object.values(SkillCategory), description: "Related skill attribute" },
+        isHabit: { type: "BOOLEAN", description: "True if this is a recurring habit, False if one-time task" }
       },
       required: ["title", "difficulty", "skillCategory", "isHabit"]
     }
@@ -149,26 +179,26 @@ export const getAITools = (): FunctionDeclaration[] => {
     name: "create_quest",
     description: "Initialize a new Operation. Use this ONLY for large, multi-step projects. You MUST generate a detailed breakdown of 'categories' (phases) and 'tasks' to populate the operation plan.",
     parameters: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        title: { type: Type.STRING, description: "The strategic title of the operation" },
+        title: { type: "STRING", description: "The strategic title of the operation" },
         categories: {
-            type: Type.ARRAY,
+            type: "ARRAY",
             description: "Detailed breakdown of the quest into phases/sections",
             items: {
-                type: Type.OBJECT,
+                type: "OBJECT",
                 properties: {
-                    title: { type: Type.STRING, description: "Phase title (e.g., 'Phase 1: Research')" },
+                    title: { type: "STRING", description: "Phase title (e.g., 'Phase 1: Research')" },
                     tasks: {
-                        type: Type.ARRAY,
+                        type: "ARRAY",
                         description: "Actionable steps for this phase",
                         items: {
-                            type: Type.OBJECT,
+                            type: "OBJECT",
                             properties: {
-                                name: { type: Type.STRING, description: "Actionable task name" },
-                                difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
-                                skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) },
-                                description: { type: Type.STRING, description: "Short description/context" }
+                                name: { type: "STRING", description: "Actionable task name" },
+                                difficulty: { type: "STRING", enum: Object.values(Difficulty) },
+                                skillCategory: { type: "STRING", enum: Object.values(SkillCategory) },
+                                description: { type: "STRING", description: "Short description/context" }
                             },
                             required: ["name", "difficulty", "skillCategory"]
                         }
@@ -186,28 +216,28 @@ export const getAITools = (): FunctionDeclaration[] => {
     name: "create_challenge",
     description: "Create a competitive challenge against a network connection. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' for the challenge. Example: For a fitness challenge, create phases like 'Week 1: Foundation', 'Week 2: Intensity', each with multiple specific tasks like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without tasks!",
     parameters: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        title: { type: Type.STRING, description: "Name of the challenge" },
-        description: { type: Type.STRING, description: "Terms of the challenge" },
-        opponentName: { type: Type.STRING, description: "Name of the network connection to challenge (must match a connection in the list)" },
+        title: { type: "STRING", description: "Name of the challenge" },
+        description: { type: "STRING", description: "Terms of the challenge" },
+        opponentName: { type: "STRING", description: "Name of the network connection to challenge (must match a connection in the list)" },
         categories: {
-            type: Type.ARRAY,
+            type: "ARRAY",
             description: "Detailed breakdown of the challenge into phases/sections with tasks",
             items: {
-                type: Type.OBJECT,
+                type: "OBJECT",
                 properties: {
-                    title: { type: Type.STRING, description: "Phase title (e.g., 'Week 1: Fundamentals')" },
+                    title: { type: "STRING", description: "Phase title (e.g., 'Week 1: Fundamentals')" },
                     tasks: {
-                        type: Type.ARRAY,
+                        type: "ARRAY",
                         description: "Actionable tasks for this phase that both you and your opponent will complete",
                         items: {
-                            type: Type.OBJECT,
+                            type: "OBJECT",
                             properties: {
-                                name: { type: Type.STRING, description: "Actionable task name" },
-                                difficulty: { type: Type.STRING, enum: Object.values(Difficulty) },
-                                skillCategory: { type: Type.STRING, enum: Object.values(SkillCategory) },
-                                description: { type: Type.STRING, description: "Short description/context" }
+                                name: { type: "STRING", description: "Actionable task name" },
+                                difficulty: { type: "STRING", enum: Object.values(Difficulty) },
+                                skillCategory: { type: "STRING", enum: Object.values(SkillCategory) },
+                                description: { type: "STRING", description: "Short description/context" }
                             },
                             required: ["name", "difficulty", "skillCategory"]
                         }
@@ -242,29 +272,43 @@ export const generateChatResponse = async (
   candidates?: any;
 }> => {
   try {
-    const ai = getAIClient();
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [
-          ...messages.filter(m => m.role !== 'system').map(m => ({
-              role: m.role === 'user' ? 'user' : 'model',
-              parts: [{ text: m.text || '' }]
-          })),
-          { role: 'user', parts: [{ text: userInput }] }
-      ],
-      config: {
-          systemInstruction: systemPrompt,
-          tools: [{ functionDeclarations: getAITools() }],
-      }
+    // Verify user is authenticated
+    const auth = getAuth();
+    if (!auth.currentUser) {
+      throw new Error("User must be authenticated to use AI features");
+    }
+
+    const geminiProxy = getGeminiProxy();
+    const result = await geminiProxy({
+      action: "generateChatResponse",
+      payload: {
+        messages,
+        userInput,
+        systemPrompt,
+        tools: getAITools(),
+      },
     });
 
-    return {
-      text: response.text,
-      functionCalls: response.functionCalls,
-      candidates: response.candidates
-    };
-  } catch (error) {
-    if (DEBUG_FLAGS.oracle) console.error('Error generating chat response:', error);
+    if (result.data.success && result.data.data) {
+      return {
+        text: result.data.data.text,
+        functionCalls: result.data.data.functionCalls,
+        candidates: result.data.data.candidates,
+      };
+    }
+
+    throw new Error("Failed to generate chat response");
+  } catch (error: any) {
+    if (DEBUG_FLAGS.oracle) console.error("Error generating chat response:", error);
+    
+    // Provide user-friendly error messages
+    if (error.code === "unauthenticated") {
+      throw new Error("Please sign in to use AI features");
+    }
+    if (error.code === "permission-denied") {
+      throw new Error("You don't have permission to use this feature");
+    }
+    
     throw error;
   }
 };
@@ -281,23 +325,40 @@ export const generateFollowUpResponse = async (
   functionResponses: any[]
 ): Promise<string> => {
   try {
-    const ai = getAIClient();
-    const finalResponse = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: [
-         ...messages.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.text || '' }] })),
-         { role: 'user', parts: [{ text: userInput }] },
-         previousResponse.candidates![0].content, // The model's tool call turn
-         { role: 'user', parts: functionResponses.map(fr => ({ functionResponse: fr })) } // Our response
-      ],
-      config: {
-          systemInstruction: systemPrompt,
-      }
+    // Verify user is authenticated
+    const auth = getAuth();
+    if (!auth.currentUser) {
+      throw new Error("User must be authenticated to use AI features");
+    }
+
+    const geminiProxy = getGeminiProxy();
+    const result = await geminiProxy({
+      action: "generateFollowUpResponse",
+      payload: {
+        messages,
+        userInput,
+        systemPrompt,
+        previousResponse,
+        functionResponses,
+      },
     });
+
+    if (result.data.success && result.data.data) {
+      return result.data.data.text || "Directives executed.";
+    }
+
+    throw new Error("Failed to generate follow-up response");
+  } catch (error: any) {
+    if (DEBUG_FLAGS.oracle) console.error("Error generating follow-up response:", error);
     
-    return finalResponse.text || "Directives executed.";
-  } catch (error) {
-    if (DEBUG_FLAGS.oracle) console.error('Error generating follow-up response:', error);
+    // Provide user-friendly error messages
+    if (error.code === "unauthenticated") {
+      throw new Error("Please sign in to use AI features");
+    }
+    if (error.code === "permission-denied") {
+      throw new Error("You don't have permission to use this feature");
+    }
+    
     throw error;
   }
 };

@@ -29,8 +29,11 @@ Transform your daily life into an epic RPG adventure! XPeak helps you level up b
 # Install dependencies
 npm install
 
-# Create .env file
-echo "VITE_GEMINI_API_KEY=your_api_key_here" > .env
+# Install Firebase Functions dependencies
+cd functions && npm install && cd ..
+
+# Create .env file (see Firebase Setup section below)
+# Copy .env.example to .env and fill in your Firebase configuration
 
 # Start development server
 npm run dev
@@ -38,6 +41,46 @@ npm run dev
 # Build for production
 npm run build
 ```
+
+## 🔥 Firebase Setup
+
+XPeak uses Firebase for secure AI API proxying and authentication. Follow these steps:
+
+1. **Create a Firebase Project**
+   - Go to [Firebase Console](https://console.firebase.google.com/)
+   - Create a new project or use an existing one
+
+2. **Set up Firebase Configuration**
+   - Create a `.env` file in the root directory
+   - Add your Firebase configuration:
+   ```env
+   VITE_FIREBASE_API_KEY=your_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+   VITE_FIREBASE_PROJECT_ID=your-project-id
+   VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   ```
+
+3. **Set up Firebase Secrets (for AI API)**
+   - Install Firebase CLI: `npm install -g firebase-tools`
+   - Login: `firebase login`
+   - Set your project: `firebase use your-project-id`
+   - Set the Gemini API key secret:
+     ```bash
+     firebase functions:secrets:set GEMINI_API_KEY
+     ```
+   - Enter your Gemini API key when prompted
+
+4. **Deploy Cloud Functions**
+   ```bash
+   cd functions
+   npm install
+   cd ..
+   firebase deploy --only functions
+   ```
+
+See [FIREBASE_SETUP.md](./FIREBASE_SETUP.md) for detailed setup instructions.
 
 ## 🏗️ Project Structure
 
@@ -147,11 +190,13 @@ The app includes a theme system with customizable colors:
 - **Surface** - Elevated card backgrounds
 - **Secondary** - Muted text and borders
 
-## 🔐 Data Privacy
+## 🔐 Data Privacy & Security
 
-- All data is stored locally in your browser
-- No server-side data collection
-- API key required only for AI features (optional)
+- **Secure AI API**: All AI requests are proxied through Firebase Cloud Functions
+- **API Key Security**: Gemini API key is stored securely in Firebase Secrets Manager (never exposed to client)
+- **Authentication Required**: All AI features require user authentication
+- **Data Storage**: Currently uses localStorage (Firestore integration available)
+- **No Data Collection**: We don't collect or share your personal data
 
 ## 🤝 Contributing
 
