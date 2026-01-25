@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { UserProfile, SkillCategory, Goal, ProfileLayout, TaskTemplate } from '../types';
 import { calculateLevel, getLevelProgress } from '../utils/gamification';
-import { storage, STORAGE_KEYS } from '../services/localStorage';
-import { persistenceService } from '../services/persistenceService';
+import { auth } from '../config/firebase';
+import { getUser, setUser as saveUserToFirestore, subscribeToUser, setHistoryEntry } from '../services/firestoreService';
 import { gameToast } from '../components/ui/GameToast';
-import { addHistoryEntry, processHistory, ArchivedHistory, migrateToDailyAggregates, HistoryEntry } from '../services/historyService';
+import { addHistoryEntry, processHistory, migrateToDailyAggregates, HistoryEntry } from '../services/historyService';
 
 const DEFAULT_LAYOUT: ProfileLayout = { 
   widgets: [
@@ -17,59 +18,22 @@ const DEFAULT_LAYOUT: ProfileLayout = {
   ] 
 };
 
-const getInitialUserLocal = (): UserProfile => {
-  const getDefaultUser = (): UserProfile => {
-    const skills = {} as Record<SkillCategory, { category: SkillCategory; xp: number; level: number }>;
-    Object.values(SkillCategory).forEach(cat => {
-      skills[cat] = { category: cat, xp: 0, level: 0 };
-    });
-    return { 
-      name: 'Protocol-01', 
-      totalXP: 0, 
-      level: 0, 
-      skills, 
-      history: [], 
-      identity: '', 
-      goals: [], 
-      templates: [], 
-      layout: DEFAULT_LAYOUT 
-    };
+const getDefaultUser = (): UserProfile => {
+  const skills = {} as Record<SkillCategory, { category: SkillCategory; xp: number; level: number }>;
+  Object.values(SkillCategory).forEach(cat => {
+    skills[cat] = { category: cat, xp: 0, level: 0 };
+  });
+  return { 
+    name: 'Protocol-01', 
+    totalXP: 0, 
+    level: 0, 
+    skills, 
+    history: [], 
+    identity: '', 
+    goals: [], 
+    templates: [], 
+    layout: DEFAULT_LAYOUT 
   };
-
-  const saved = storage.get<UserProfile | null>(STORAGE_KEYS.USER, null);
-  
-  if (saved) {
-    // Migration: Ensure all default widgets exist
-    const existingIds = new Set(saved.layout?.widgets?.map((w) => w.id) || []);
-    const newWidgets = DEFAULT_LAYOUT.widgets.filter(w => !existingIds.has(w.id));
-    
-    const layout = saved.layout ? {
-        ...saved.layout,
-        widgets: [...saved.layout.widgets, ...newWidgets]
-    } : DEFAULT_LAYOUT;
-
-    // Migrate legacy history format to daily aggregates if needed
-    let historyToProcess = saved.history || [];
-    
-    // Check if history is in legacy format (has taskId property) and migrate
-    if (historyToProcess.length > 0 && 'taskId' in historyToProcess[0]) {
-      // Legacy format detected - migrate to daily aggregates
-      historyToProcess = migrateToDailyAggregates(historyToProcess as HistoryEntry[]);
-    }
-    
-    // Process history to ensure it's within limits and archive old entries
-    const { activeHistory, archivedData } = processHistory(historyToProcess);
-    
-    // Store archived data if any exists
-    if (archivedData) {
-      const existingArchives = storage.get<ArchivedHistory[]>(STORAGE_KEYS.ARCHIVED_HISTORY, []);
-      persistenceService.set(STORAGE_KEYS.ARCHIVED_HISTORY, [...existingArchives, archivedData]);
-    }
-
-    return { ...saved, layout, history: activeHistory };
-  }
-  
-  return getDefaultUser();
 };
 
 interface UseUserManagerReturn {
@@ -97,15 +61,98 @@ interface UseUserManagerReturn {
 }
 
 export const useUserManager = (): UseUserManagerReturn => {
-  const [user, setUser] = useState<UserProfile>(getInitialUserLocal);
+  const [user, setUserState] = useState<UserProfile>(getDefaultUser);
   const [xpPopups, setXpPopups] = useState<Record<string, number>>({});
   const [flashKey, setFlashKey] = useState(0);
   const [showLevelUp, setShowLevelUp] = useState<{ show: boolean; level: number } | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Save to localStorage (debounced)
-  useEffect(() => { 
-    persistenceService.set(STORAGE_KEYS.USER, user); 
-  }, [user]);
+  // Initialize user from Firestore on mount and auth state changes
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          // Try to get user from Firestore
+          const firestoreUser = await getUser(firebaseUser.uid);
+          
+          if (firestoreUser) {
+            // Ensure all default widgets exist
+            const existingIds = new Set(firestoreUser.layout?.widgets?.map((w) => w.id) || []);
+            const newWidgets = DEFAULT_LAYOUT.widgets.filter(w => !existingIds.has(w.id));
+            
+            const layout = firestoreUser.layout ? {
+                ...firestoreUser.layout,
+                widgets: [...firestoreUser.layout.widgets, ...newWidgets]
+            } : DEFAULT_LAYOUT;
+
+            // Migrate legacy history format if needed
+            let historyToProcess = firestoreUser.history || [];
+            if (historyToProcess.length > 0 && 'taskId' in historyToProcess[0]) {
+              historyToProcess = migrateToDailyAggregates(historyToProcess as HistoryEntry[]);
+            }
+            
+            const { activeHistory } = processHistory(historyToProcess);
+            
+            setUserState({ ...firestoreUser, layout, history: activeHistory });
+          } else {
+            // User document doesn't exist, use default
+            setUserState(getDefaultUser());
+          }
+        } catch (error) {
+          console.error('Error loading user:', error);
+          setUserState(getDefaultUser());
+        }
+      } else {
+        // Not authenticated, use default user
+        setUserState(getDefaultUser());
+      }
+      setIsInitialized(true);
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Subscribe to real-time user updates
+  useEffect(() => {
+    if (!isInitialized || !auth.currentUser) return;
+
+    const unsubscribe = subscribeToUser((firestoreUser) => {
+      if (firestoreUser) {
+        // Ensure all default widgets exist
+        const existingIds = new Set(firestoreUser.layout?.widgets?.map((w) => w.id) || []);
+        const newWidgets = DEFAULT_LAYOUT.widgets.filter(w => !existingIds.has(w.id));
+        
+        const layout = firestoreUser.layout ? {
+            ...firestoreUser.layout,
+            widgets: [...firestoreUser.layout.widgets, ...newWidgets]
+        } : DEFAULT_LAYOUT;
+
+        setUserState({ ...firestoreUser, layout });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isInitialized]);
+
+  // Save to Firestore when user changes (debounced with a small delay)
+  useEffect(() => {
+    if (!isInitialized || !auth.currentUser) return;
+
+    const timeoutId = setTimeout(() => {
+      saveUserToFirestore(user).catch((error) => {
+        console.error('Error saving user to Firestore:', error);
+      });
+    }, 1000); // 1 second debounce
+
+    return () => clearTimeout(timeoutId);
+  }, [user, isInitialized]);
+
+  // Wrapper to update both local state and Firestore
+  const setUser = useCallback((newUser: UserProfile | ((prev: UserProfile) => UserProfile)) => {
+    setUserState((prev) => {
+      return typeof newUser === 'function' ? newUser(prev) : newUser;
+    });
+  }, []);
 
   const levelProgress = getLevelProgress(user.totalXP, user.level);
 
@@ -143,12 +190,15 @@ export const useUserManager = (): UseUserManagerReturn => {
 
       // Use history service to add new entry and manage archiving
       const newEntry = { date: new Date().toISOString(), xpGained: amount, taskId: historyId };
-      const { activeHistory, archivedData } = addHistoryEntry(prev.history, newEntry);
+      const { activeHistory } = addHistoryEntry(prev.history, newEntry);
       
-      // Store archived data if any exists (for now in localStorage, later in Firebase)
-      if (archivedData) {
-        const existingArchives = storage.get<ArchivedHistory[]>(STORAGE_KEYS.ARCHIVED_HISTORY, []);
-        persistenceService.set(STORAGE_KEYS.ARCHIVED_HISTORY, [...existingArchives, archivedData]);
+      // Save history entry to Firestore
+      const today = new Date().toISOString().split('T')[0];
+      const todayEntry = activeHistory.find(h => h.date === today);
+      if (todayEntry) {
+        setHistoryEntry(todayEntry).catch((error) => {
+          console.error('Error saving history entry:', error);
+        });
       }
 
       return {

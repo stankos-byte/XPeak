@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Task, TaskTemplate, Difficulty, SkillCategory } from '../types';
 import { calculateXP } from '../utils/gamification';
-import { storage, STORAGE_KEYS } from '../services/localStorage';
-import { persistenceService } from '../services/persistenceService';
+import { auth } from '../config/firebase';
+import { getTasks, createTask, updateTask, deleteTask, subscribeToTasks } from '../services/firestoreService';
 import { useHabitSync } from './useHabitSync';
 import { gameToast } from '../components/ui/GameToast';
 
@@ -27,19 +28,48 @@ export const useTaskManager = (
   onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void,
   onSaveTemplate: (template: TaskTemplate) => void
 ): UseTaskManagerReturn => {
-  const [tasks, setTasks] = useState<Task[]>(() => storage.get<Task[]>(STORAGE_KEYS.TASKS, []));
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Initialize tasks from Firestore on mount and auth state changes
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const firestoreTasks = await getTasks(firebaseUser.uid);
+          setTasks(firestoreTasks);
+        } catch (error) {
+          console.error('Error loading tasks:', error);
+          setTasks([]);
+        }
+      } else {
+        setTasks([]);
+      }
+      setIsInitialized(true);
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Subscribe to real-time task updates
+  useEffect(() => {
+    if (!isInitialized || !auth.currentUser) return;
+
+    const unsubscribe = subscribeToTasks((firestoreTasks) => {
+      setTasks(firestoreTasks);
+    });
+
+    return () => unsubscribe();
+  }, [isInitialized]);
 
   // Sync habits daily
   useHabitSync(tasks, setTasks);
 
-  // Save to localStorage (debounced)
-  useEffect(() => { 
-    persistenceService.set(STORAGE_KEYS.TASKS, tasks); 
-  }, [tasks]);
+  const handleCompleteTask = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
 
-  const handleCompleteTask = useCallback((id: string) => {
     const task = tasks.find((t: Task) => t.id === id);
     if (!task) return;
     const xpResult = calculateXP(task);
@@ -48,12 +78,18 @@ export const useTaskManager = (
     // Increment streak if habit
     const newStreak = task.isHabit ? (task.streak || 0) + 1 : 0;
 
-    setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { 
-        ...t, 
-        completed: true, 
-        lastCompletedDate: new Date().toISOString(), 
-        streak: newStreak 
-    } : t));
+    try {
+      await updateTask(id, {
+        completed: true,
+        lastCompletedDate: new Date().toISOString(),
+        streak: newStreak
+      });
+      // Real-time listener will update tasks automatically
+    } catch (error) {
+      console.error('Error completing task:', error);
+      gameToast.error('Failed to complete task');
+      return;
+    }
 
     onXPChange(amount, id, { [id]: amount }, task.skillCategory);
 
@@ -63,7 +99,9 @@ export const useTaskManager = (
     }
   }, [tasks, onXPChange]);
 
-  const handleUncompleteTask = useCallback((id: string) => {
+  const handleUncompleteTask = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
+
     const task = tasks.find((t: Task) => t.id === id);
     if (!task) return;
     const xpResult = calculateXP(task);
@@ -72,18 +110,32 @@ export const useTaskManager = (
     // Decrement streak if habit
     const newStreak = task.isHabit ? Math.max(0, (task.streak || 0) - 1) : 0;
 
-    setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { 
-        ...t, 
-        completed: false, 
-        lastCompletedDate: null, 
-        streak: newStreak 
-    } : t));
+    try {
+      await updateTask(id, {
+        completed: false,
+        lastCompletedDate: null,
+        streak: newStreak
+      });
+      // Real-time listener will update tasks automatically
+    } catch (error) {
+      console.error('Error uncompleting task:', error);
+      gameToast.error('Failed to uncomplete task');
+      return;
+    }
 
     onXPChange(amount, id, { [id]: amount }, task.skillCategory);
   }, [tasks, onXPChange]);
 
-  const handleDeleteTask = useCallback((id: string) => {
-    setTasks((prev: Task[]) => prev.filter((t: Task) => t.id !== id));
+  const handleDeleteTask = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
+
+    try {
+      await deleteTask(id);
+      // Real-time listener will update tasks automatically
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      gameToast.error('Failed to delete task');
+    }
   }, []);
 
   const handleEditTask = useCallback((task: Task) => {
@@ -103,9 +155,10 @@ export const useTaskManager = (
     onSaveTemplate(template);
   }, []);
 
-  const handleCreateTask = useCallback((data: Partial<Task>) => {
-    setTasks((prev: Task[]) => [{
-      id: crypto.randomUUID(),
+  const handleCreateTask = useCallback(async (data: Partial<Task>) => {
+    if (!auth.currentUser) return;
+
+    const newTask: Omit<Task, 'id'> = {
       title: data.title || 'New Task',
       description: data.description || '',
       difficulty: data.difficulty || Difficulty.EASY,
@@ -115,27 +168,32 @@ export const useTaskManager = (
       streak: 0,
       lastCompletedDate: null,
       createdAt: new Date().toISOString()
-    }, ...prev]);
+    };
+
+    try {
+      await createTask(newTask);
+      // Real-time listener will update tasks automatically
+    } catch (error) {
+      console.error('Error creating task:', error);
+      gameToast.error('Failed to create task');
+    }
   }, []);
 
-  const handleUpdateTask = useCallback((id: string, data: Partial<Task>) => {
-    setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { ...t, ...data } : t));
+  const handleUpdateTask = useCallback(async (id: string, data: Partial<Task>) => {
+    if (!auth.currentUser) return;
+
+    try {
+      await updateTask(id, data);
+      // Real-time listener will update tasks automatically
+    } catch (error) {
+      console.error('Error updating task:', error);
+      gameToast.error('Failed to update task');
+    }
   }, []);
 
-  const handleAiCreateTask = useCallback((task: Partial<Task>) => {
-    setTasks((prev: Task[]) => [{
-      id: crypto.randomUUID(),
-      title: task.title || 'New Assignment',
-      description: task.description || '',
-      difficulty: task.difficulty || Difficulty.EASY,
-      skillCategory: task.skillCategory || SkillCategory.MISC,
-      isHabit: task.isHabit || false,
-      completed: false,
-      streak: 0,
-      lastCompletedDate: null,
-      createdAt: new Date().toISOString()
-    }, ...prev]);
-  }, []);
+  const handleAiCreateTask = useCallback(async (task: Partial<Task>) => {
+    await handleCreateTask(task);
+  }, [handleCreateTask]);
 
   return {
     tasks,

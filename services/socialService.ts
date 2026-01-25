@@ -1,17 +1,15 @@
 /**
  * SocialService - Manages Operatives (Friends) and Contracts (Challenges)
  * 
- * This service handles:
- * - Caching operatives and contracts in localStorage
- * - Async fetching from remote sources
- * - Real-time updates via listeners (ready for Firestore onSnapshot)
- * 
- * Currently uses mock data with localStorage caching, but structured to easily
- * replace with Firestore real-time listeners for live updates in the Global Network.
+ * This service now uses Firestore for real-time updates.
+ * Maintained for backward compatibility, but new code should use
+ * firestoreService directly.
  */
 
 import { Friend, FriendChallenge } from '../types';
 import { DEBUG_FLAGS } from '../config/debugFlags';
+import { getFriends, subscribeToFriends, getUserChallenges, subscribeToChallenges } from './firestoreService';
+import { auth } from '../config/firebase';
 
 // Type aliases for domain-specific terminology
 export type Operative = Friend;
@@ -171,121 +169,75 @@ export class SocialService {
   private fetchContractsPromise: Promise<Contract[]> | null = null;
 
   /**
-   * Initialize the service by loading from cache or fetching fresh data
+   * Initialize the service by loading from Firestore
    */
   async initialize(): Promise<{ operatives: Operative[]; contracts: Contract[] }> {
-    // Try to load from cache first
-    const cachedOperatives = getCachedOperatives();
-    const cachedContracts = getCachedContracts();
+    if (!auth.currentUser) {
+      this.currentOperatives = [];
+      this.currentContracts = [];
+      return { operatives: [], contracts: [] };
+    }
 
-    if (cachedOperatives && cachedContracts) {
-      this.currentOperatives = cachedOperatives;
-      this.currentContracts = cachedContracts;
+    try {
+      const [operatives, contracts] = await Promise.all([
+        getFriends(),
+        getUserChallenges()
+      ]);
+
+      this.currentOperatives = operatives;
+      this.currentContracts = contracts;
       this.notifyOperativesListeners();
       this.notifyContractsListeners();
-      
-      // Fetch fresh data in background (don't await)
-      this.fetchOperatives().catch((error) => {
-        if (DEBUG_FLAGS.social) console.error(error);
-      });
-      this.fetchContracts().catch((error) => {
-        if (DEBUG_FLAGS.social) console.error(error);
-      });
-      
-      return { operatives: cachedOperatives, contracts: cachedContracts };
+
+      return { operatives, contracts };
+    } catch (error) {
+      if (DEBUG_FLAGS.social) console.error('Error initializing social service:', error);
+      this.currentOperatives = [];
+      this.currentContracts = [];
+      return { operatives: [], contracts: [] };
     }
-
-    // No valid cache, fetch fresh data
-    const [operatives, contracts] = await Promise.all([
-      this.fetchOperatives(),
-      this.fetchContracts()
-    ]);
-
-    return { operatives, contracts };
   }
 
   /**
-   * Fetch operatives from remote source
-   * Currently returns mock data, but structured for async API calls
+   * Fetch operatives from Firestore
    */
   async fetchOperatives(): Promise<Operative[]> {
-    // If there's already a fetch in progress, return that promise
-    if (this.fetchOperativesPromise) {
-      return this.fetchOperativesPromise;
+    if (!auth.currentUser) {
+      return [];
     }
 
-    this.fetchOperativesPromise = (async () => {
-      try {
-        // TODO: Replace with actual API call
-        // Example: const response = await fetch('/api/operatives');
-        // const operatives = await response.json();
-        
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        const operatives = [...MOCK_OPERATIVES];
-        
-        // Cache the results
-        setCachedOperatives(operatives);
-        this.currentOperatives = operatives;
-        this.notifyOperativesListeners();
-        
-        return operatives;
-      } catch (error) {
-        if (DEBUG_FLAGS.social) console.error('Error fetching operatives:', error);
-        // Fallback to mock data on error
-        const fallback = [...MOCK_OPERATIVES];
-        this.currentOperatives = fallback;
-        this.notifyOperativesListeners();
-        return fallback;
-      } finally {
-        this.fetchOperativesPromise = null;
-      }
-    })();
-
-    return this.fetchOperativesPromise;
+    try {
+      const operatives = await getFriends();
+      this.currentOperatives = operatives;
+      this.notifyOperativesListeners();
+      return operatives;
+    } catch (error) {
+      if (DEBUG_FLAGS.social) console.error('Error fetching operatives:', error);
+      this.currentOperatives = [];
+      this.notifyOperativesListeners();
+      return [];
+    }
   }
 
   /**
-   * Fetch contracts from remote source
-   * Currently returns mock data, but structured for async API calls
+   * Fetch contracts from Firestore
    */
   async fetchContracts(): Promise<Contract[]> {
-    // If there's already a fetch in progress, return that promise
-    if (this.fetchContractsPromise) {
-      return this.fetchContractsPromise;
+    if (!auth.currentUser) {
+      return [];
     }
 
-    this.fetchContractsPromise = (async () => {
-      try {
-        // TODO: Replace with actual API call
-        // Example: const response = await fetch('/api/contracts');
-        // const contracts = await response.json();
-        
-        // Simulate network delay
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        const contracts = [...MOCK_CONTRACTS];
-        
-        // Cache the results
-        setCachedContracts(contracts);
-        this.currentContracts = contracts;
-        this.notifyContractsListeners();
-        
-        return contracts;
-      } catch (error) {
-        if (DEBUG_FLAGS.social) console.error('Error fetching contracts:', error);
-        // Fallback to mock data on error
-        const fallback = [...MOCK_CONTRACTS];
-        this.currentContracts = fallback;
-        this.notifyContractsListeners();
-        return fallback;
-      } finally {
-        this.fetchContractsPromise = null;
-      }
-    })();
-
-    return this.fetchContractsPromise;
+    try {
+      const contracts = await getUserChallenges();
+      this.currentContracts = contracts;
+      this.notifyContractsListeners();
+      return contracts;
+    } catch (error) {
+      if (DEBUG_FLAGS.social) console.error('Error fetching contracts:', error);
+      this.currentContracts = [];
+      this.notifyContractsListeners();
+      return [];
+    }
   }
 
   /**

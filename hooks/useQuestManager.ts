@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { MainQuest, QuestCategory, QuestTask, SkillCategory, Difficulty } from '../types';
 import { calculateXP, getQuestBonusAmount, isCategoryComplete, isQuestComplete } from '../utils/gamification';
-import { storage, STORAGE_KEYS } from '../services/localStorage';
-import { persistenceService } from '../services/persistenceService';
+import { auth } from '../config/firebase';
+import { getQuests, createQuest, updateQuest, deleteQuest, subscribeToQuests } from '../services/firestoreService';
 import { generateQuest } from '../services/aiService';
 import { DEBUG_FLAGS } from '../config/debugFlags';
 
@@ -39,21 +40,48 @@ interface UseQuestManagerReturn {
 export const useQuestManager = (
   onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void
 ): UseQuestManagerReturn => {
-  const [mainQuests, setMainQuests] = useState<MainQuest[]>(() => storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, []));
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
-    const quests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, []);
-    return new Set(quests.map((q: MainQuest) => q.id));
-  });
+  const [mainQuests, setMainQuests] = useState<MainQuest[]>([]);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [oraclingQuestId, setOraclingQuestId] = useState<string | null>(null);
   const [pendingQuestBonus, setPendingQuestBonus] = useState<{ qid: string; bonus: number; tid: string; questTitle: string } | null>(null);
   const [textModalConfig, setTextModalConfig] = useState<{ isOpen: boolean; type: 'quest' | 'category' | 'edit-quest' | 'edit-category' | null; parentId?: string; categoryId?: string; initialValue?: string; }>({ isOpen: false, type: null });
   const [questTaskConfig, setQuestTaskConfig] = useState<{ isOpen: boolean; questId?: string; categoryId?: string; editingTask?: QuestTask | null; }>({ isOpen: false });
   const [questToDelete, setQuestToDelete] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Save to localStorage (debounced)
-  useEffect(() => { 
-    persistenceService.set(STORAGE_KEYS.QUESTS, mainQuests); 
-  }, [mainQuests]);
+  // Initialize quests from Firestore on mount and auth state changes
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const firestoreQuests = await getQuests(firebaseUser.uid);
+          setMainQuests(firestoreQuests);
+          setExpandedNodes(new Set(firestoreQuests.map((q: MainQuest) => q.id)));
+        } catch (error) {
+          console.error('Error loading quests:', error);
+          setMainQuests([]);
+          setExpandedNodes(new Set());
+        }
+      } else {
+        setMainQuests([]);
+        setExpandedNodes(new Set());
+      }
+      setIsInitialized(true);
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  // Subscribe to real-time quest updates
+  useEffect(() => {
+    if (!isInitialized || !auth.currentUser) return;
+
+    const unsubscribe = subscribeToQuests((firestoreQuests) => {
+      setMainQuests(firestoreQuests);
+    });
+
+    return () => unsubscribe();
+  }, [isInitialized]);
 
   const toggleNode = useCallback((id: string) => {
     setExpandedNodes((p: Set<string>) => { 
@@ -110,16 +138,30 @@ export const useQuestManager = (
     }
 
     // Update Quests State
-    setMainQuests((qs: MainQuest[]) => qs.map((mq: MainQuest) => mq.id !== qid ? mq : {
-      ...mq,
-      categories: mq.categories.map((cat: QuestCategory) => cat.id !== cid ? cat : {
-        ...cat,
-        tasks: cat.tasks.map((task: QuestTask) => task.task_id !== tid ? task : {
-          ...task,
-          completed: isCompleting
-        } as QuestTask)
-      })
-    }));
+    setMainQuests((qs: MainQuest[]) => {
+      const updated = qs.map((mq: MainQuest) => mq.id !== qid ? mq : {
+        ...mq,
+        categories: mq.categories.map((cat: QuestCategory) => cat.id !== cid ? cat : {
+          ...cat,
+          tasks: cat.tasks.map((task: QuestTask) => task.task_id !== tid ? task : {
+            ...task,
+            completed: isCompleting
+          } as QuestTask)
+        })
+      });
+      
+      // Save to Firestore
+      if (auth.currentUser) {
+        const quest = updated.find(q => q.id === qid);
+        if (quest) {
+          updateQuest(qid, quest).catch((error) => {
+            console.error('Error updating quest:', error);
+          });
+        }
+      }
+      
+      return updated;
+    });
 
     // Grant XP
     onXPChange(baseAmount + bonusAmount, tid, popups, t.skillCategory, baseAmount);
@@ -220,13 +262,20 @@ export const useQuestManager = (
     }
   }, [mainQuests]);
 
-  const handleDeleteQuest = useCallback((id: string) => {
-    setMainQuests((prev: MainQuest[]) => prev.filter((q: MainQuest) => q.id !== id));
+  const handleDeleteQuest = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
+
+    try {
+      await deleteQuest(id);
+      // Real-time listener will update quests automatically
+    } catch (error) {
+      console.error('Error deleting quest:', error);
+    }
   }, []);
 
-  const handleCreateQuest = useCallback((title: string, categories?: { title: string; tasks: { name: string; difficulty?: Difficulty; skillCategory?: SkillCategory; description?: string }[] }[]) => {
-    const newId = crypto.randomUUID();
-    
+  const handleCreateQuest = useCallback(async (title: string, categories?: { title: string; tasks: { name: string; difficulty?: Difficulty; skillCategory?: SkillCategory; description?: string }[] }[]) => {
+    if (!auth.currentUser) return;
+
     let questCategories: QuestCategory[] = [];
     if (categories && categories.length > 0) {
          questCategories = categories.map((c) => ({
@@ -243,8 +292,13 @@ export const useQuestManager = (
         }));
     }
 
-    setMainQuests((p: MainQuest[]) => [{ id: newId, title: title, categories: questCategories }, ...p]);
-    setExpandedNodes((prev: Set<string>) => new Set(prev).add(newId));
+    try {
+      const newId = await createQuest({ title, categories: questCategories });
+      setExpandedNodes((prev: Set<string>) => new Set(prev).add(newId));
+      // Real-time listener will update quests automatically
+    } catch (error) {
+      console.error('Error creating quest:', error);
+    }
   }, []);
 
   const handleAiCreateQuest = useCallback((title: string, categories?: { title: string; tasks: { name: string; difficulty?: Difficulty; skillCategory?: SkillCategory; description?: string }[] }[]) => {

@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import { auth } from '../../config/firebase';
+import { createUserDocument } from '../../services/firestoreService';
+import { gameToast } from '../../components/ui/GameToast';
 
 const Signup = () => {
   const navigate = useNavigate();
@@ -11,6 +15,8 @@ const Signup = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const slides = [
     {
@@ -46,20 +52,111 @@ const Signup = () => {
     return () => clearInterval(timer);
   }, [slides.length]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For now, just navigate to the studio/dashboard
-    navigate('/studio');
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      // Create user with email and password
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        formData.email,
+        formData.password
+      );
+
+      const user = userCredential.user;
+
+      // Create user document in Firestore
+      await createUserDocument(
+        user.uid,
+        user.email || formData.email,
+        formData.username || user.displayName || 'Protocol-01',
+        user.photoURL,
+        'email'
+      );
+
+      // Update display name if provided
+      if (formData.username && user.displayName !== formData.username) {
+        // Note: Firebase Auth doesn't allow updating displayName directly from client
+        // This would typically be done via a Cloud Function or admin SDK
+      }
+
+      gameToast.success('Account created successfully!');
+      navigate('/app');
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      setError(error.message || 'Failed to create account. Please try again.');
+      gameToast.error(error.message || 'Failed to create account');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignup = () => {
-    // Navigate to studio when Google button is clicked
-    navigate('/studio');
+  const handleGoogleSignup = async () => {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+
+      // Check if user document exists, if not create it
+      const { getUser } = await import('../../services/firestoreService');
+      const existingUser = await getUser(user.uid);
+      if (!existingUser) {
+        await createUserDocument(
+          user.uid,
+          user.email || '',
+          user.displayName || 'Protocol-01',
+          user.photoURL,
+          'google'
+        );
+      }
+
+      gameToast.success('Signed in with Google!');
+      navigate('/app');
+    } catch (error: any) {
+      console.error('Google signup error:', error);
+      setError(error.message || 'Failed to sign in with Google');
+      gameToast.error(error.message || 'Failed to sign in with Google');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleAppleSignup = () => {
-    // Navigate to studio when Apple button is clicked
-    navigate('/studio');
+  const handleAppleSignup = async () => {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const provider = new OAuthProvider('apple.com');
+      const userCredential = await signInWithPopup(auth, provider);
+      const user = userCredential.user;
+
+      // Check if user document exists, if not create it
+      const { getUser } = await import('../../services/firestoreService');
+      const existingUser = await getUser(user.uid);
+      if (!existingUser) {
+        await createUserDocument(
+          user.uid,
+          user.email || '',
+          user.displayName || 'Protocol-01',
+          user.photoURL,
+          'apple'
+        );
+      }
+
+      gameToast.success('Signed in with Apple!');
+      navigate('/app');
+    } catch (error: any) {
+      console.error('Apple signup error:', error);
+      setError(error.message || 'Failed to sign in with Apple');
+      gameToast.error(error.message || 'Failed to sign in with Apple');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -202,6 +299,12 @@ const Signup = () => {
             </p>
           </div>
 
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Username Field */}
             <div>
@@ -276,9 +379,10 @@ const Signup = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full py-3 rounded-lg bg-gradient-to-r from-[#3b82f6] to-purple-600 hover:from-[#2563eb] hover:to-purple-700 text-white font-medium transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 mt-6"
+              disabled={isLoading}
+              className="w-full py-3 rounded-lg bg-gradient-to-r from-[#3b82f6] to-purple-600 hover:from-[#2563eb] hover:to-purple-700 text-white font-medium transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create account
+              {isLoading ? 'Creating account...' : 'Create account'}
             </button>
           </form>
 
@@ -297,7 +401,8 @@ const Signup = () => {
             <button
               onClick={handleGoogleSignup}
               type="button"
-              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors"
+              disabled={isLoading}
+              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -311,7 +416,8 @@ const Signup = () => {
             <button
               onClick={handleAppleSignup}
               type="button"
-              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors"
+              disabled={isLoading}
+              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>

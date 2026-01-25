@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { Friend, FriendChallenge, ChallengeQuestCategory, ChallengeQuestTask, ChallengeModeType, UserProfile, SkillCategory } from '../types';
 import { calculateXP, calculateLevel, calculateChallengeXP } from '../utils/gamification';
-import { socialService, INITIAL_OPERATIVES, INITIAL_CONTRACTS } from '../services/socialService';
+import { auth } from '../config/firebase';
+import { getUserChallenges, createChallenge, updateChallenge, deleteChallenge, subscribeToChallenges, subscribeToFriends } from '../services/firestoreService';
 import { DEBUG_FLAGS } from '../config/debugFlags';
 
 interface UseChallengeManagerReturn {
@@ -24,54 +26,55 @@ interface UseChallengeManagerReturn {
 export const useChallengeManager = (
   onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void
 ): UseChallengeManagerReturn => {
-  // Initialize with cached data or fallback to mock data
-  const [challenges, setChallenges] = useState<FriendChallenge[]>(() => {
-    const cached = socialService.getContracts();
-    return cached.length > 0 ? cached : INITIAL_CONTRACTS;
-  });
-  const [friends, setFriends] = useState<Friend[]>(() => {
-    const cached = socialService.getOperatives();
-    return cached.length > 0 ? cached : INITIAL_OPERATIVES;
-  });
+  const [challenges, setChallenges] = useState<FriendChallenge[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
   const [isChallengeModalOpen, setIsChallengeModalOpen] = useState(false);
   const [challengeToDelete, setChallengeToDelete] = useState<string | null>(null);
   const [editingChallenge, setEditingChallenge] = useState<FriendChallenge | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize service and subscribe to real-time updates
+  // Initialize challenges and friends from Firestore on mount and auth state changes
   useEffect(() => {
-    let isMounted = true;
-
-    // Initialize service (loads from cache or fetches)
-    socialService.initialize().then(({ operatives, contracts }) => {
-      if (isMounted) {
-        setFriends(operatives);
-        setChallenges(contracts);
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const [firestoreChallenges, firestoreFriends] = await Promise.all([
+            getUserChallenges(firebaseUser.uid),
+            // Friends will be loaded via subscription
+            Promise.resolve([])
+          ]);
+          setChallenges(firestoreChallenges);
+        } catch (error) {
+          if (DEBUG_FLAGS.challenges) console.error('Error loading challenges:', error);
+          setChallenges([]);
+        }
+      } else {
+        setChallenges([]);
+        setFriends([]);
       }
-    }).catch((error) => {
-      if (DEBUG_FLAGS.challenges) console.error(error);
+      setIsInitialized(true);
     });
 
-    // Subscribe to operatives updates (ready for Firestore onSnapshot)
-    const unsubscribeOperatives = socialService.onOperativesChange((operatives) => {
-      if (isMounted) {
-        setFriends(operatives);
-      }
-    });
-
-    // Subscribe to contracts updates (ready for Firestore onSnapshot)
-    const unsubscribeContracts = socialService.onContractsChange((contracts) => {
-      if (isMounted) {
-        setChallenges(contracts);
-      }
-    });
-
-    // Cleanup subscriptions on unmount
-    return () => {
-      isMounted = false;
-      unsubscribeOperatives();
-      unsubscribeContracts();
-    };
+    return () => unsubscribeAuth();
   }, []);
+
+  // Subscribe to real-time challenge updates
+  useEffect(() => {
+    if (!isInitialized || !auth.currentUser) return;
+
+    const unsubscribeChallenges = subscribeToChallenges((firestoreChallenges) => {
+      setChallenges(firestoreChallenges);
+    });
+
+    const unsubscribeFriends = subscribeToFriends((firestoreFriends) => {
+      setFriends(firestoreFriends);
+    });
+
+    return () => {
+      unsubscribeChallenges();
+      unsubscribeFriends();
+    };
+  }, [isInitialized]);
 
   const handleToggleChallengeTask = useCallback((
     challengeId: string, 
@@ -167,44 +170,53 @@ export const useChallengeManager = (
       return updatedChallenge;
     });
       
-    // Update service with new challenges state
-    socialService.updateContracts(updated);
+    // Save to Firestore
+    if (auth.currentUser) {
+      const challenge = updated.find(c => c.id === challengeId);
+      if (challenge) {
+        updateChallenge(challengeId, challenge).catch((error) => {
+          console.error('Error updating challenge:', error);
+        });
+      }
+    }
+    
     return updated;
     });
   }, []);
 
-  const handleCreateChallenge = useCallback((data: { title: string; description: string; partnerIds: string[]; categories: ChallengeQuestCategory[]; mode: ChallengeModeType }) => {
+  const handleCreateChallenge = useCallback(async (data: { title: string; description: string; partnerIds: string[]; categories: ChallengeQuestCategory[]; mode: ChallengeModeType }) => {
+    if (!auth.currentUser) return;
+
     if (editingChallenge) {
       // Update existing challenge
-      setChallenges((prev: FriendChallenge[]) => {
-        const updated = prev.map((c: FriendChallenge) => c.id === editingChallenge.id ? {
-          ...c,
+      try {
+        await updateChallenge(editingChallenge.id, {
           title: data.title,
           description: data.description || '',
           partnerIds: data.partnerIds,
           mode: data.mode || 'competitive',
           categories: data.categories || []
-        } : c);
-        socialService.updateContracts(updated);
-        return updated;
-      });
-      setEditingChallenge(null);
+        });
+        // Real-time listener will update challenges automatically
+        setEditingChallenge(null);
+      } catch (error) {
+        console.error('Error updating challenge:', error);
+      }
     } else {
       // Create new challenge
-      const newChallenge: FriendChallenge = {
-        id: crypto.randomUUID(),
-        title: data.title,
-        description: data.description || '',
-        partnerIds: data.partnerIds,
-        mode: data.mode || 'competitive',
-        categories: data.categories || [],
-        timeLeft: '7d' // Default duration
-      };
-      setChallenges((prev: FriendChallenge[]) => {
-        const updated = [...prev, newChallenge];
-        socialService.updateContracts(updated);
-        return updated;
-      });
+      try {
+        await createChallenge({
+          title: data.title,
+          description: data.description || '',
+          partnerIds: data.partnerIds,
+          mode: data.mode || 'competitive',
+          categories: data.categories || [],
+          timeLeft: '7d'
+        });
+        // Real-time listener will update challenges automatically
+      } catch (error) {
+        console.error('Error creating challenge:', error);
+      }
     }
   }, [editingChallenge]);
 
@@ -213,39 +225,38 @@ export const useChallengeManager = (
     setIsChallengeModalOpen(true);
   }, []);
 
-  const handleDeleteChallenge = useCallback((id: string) => {
-    setChallenges((prev: FriendChallenge[]) => {
-      const updated = prev.filter((c: FriendChallenge) => c.id !== id);
-      socialService.updateContracts(updated);
-      return updated;
-    });
+  const handleDeleteChallenge = useCallback(async (id: string) => {
+    if (!auth.currentUser) return;
+
+    try {
+      await deleteChallenge(id);
+      // Real-time listener will update challenges automatically
+    } catch (error) {
+      console.error('Error deleting challenge:', error);
+    }
   }, []);
 
-  const handleAiCreateChallenge = useCallback((challenge: Partial<FriendChallenge>) => {
-    setChallenges((prev: FriendChallenge[]) => {
-      const updated = [...prev, {
-        id: crypto.randomUUID(),
+  const handleAiCreateChallenge = useCallback(async (challenge: Partial<FriendChallenge>) => {
+    if (!auth.currentUser) return;
+
+    try {
+      await createChallenge({
         title: challenge.title || 'New Challenge',
         description: challenge.description || 'Defeat your opponent.',
-        partnerIds: challenge.partnerIds || ['1'],
+        partnerIds: challenge.partnerIds || [],
         mode: challenge.mode || 'competitive',
         categories: challenge.categories || [],
         timeLeft: '7d'
-      }];
-      socialService.updateContracts(updated);
-      return updated;
-    });
+      });
+      // Real-time listener will update challenges automatically
+    } catch (error) {
+      console.error('Error creating AI challenge:', error);
+    }
   }, []);
 
   return {
     challenges,
-    setChallenges: (value: React.SetStateAction<FriendChallenge[]>) => {
-      setChallenges((prev) => {
-        const updated = typeof value === 'function' ? value(prev) : value;
-        socialService.updateContracts(updated);
-        return updated;
-      });
-    },
+    setChallenges,
     friends,
     isChallengeModalOpen,
     setIsChallengeModalOpen,

@@ -1,7 +1,5 @@
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { getApp } from "firebase/app";
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import app, { auth } from "../config/firebase";
 import { Difficulty, SkillCategory, ChatMessage } from "../types";
 import { DEBUG_FLAGS } from "../config/debugFlags";
 
@@ -28,33 +26,8 @@ interface FunctionDeclaration {
  * to keep the API key secure on the server-side.
  */
 
-// Initialize Firebase if not already initialized
-const initializeFirebase = () => {
-  if (getApps().length === 0) {
-    // Firebase config should be provided via environment variables
-    const firebaseConfig = {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID,
-    };
-
-    if (!firebaseConfig.projectId) {
-      throw new Error(
-        "Firebase is not configured. Please set VITE_FIREBASE_PROJECT_ID and other Firebase config in your .env file."
-      );
-    }
-
-    return initializeApp(firebaseConfig);
-  }
-  return getApp();
-};
-
-// Get Firebase Functions instance
+// Get Firebase Functions instance using centralized app
 const getFirebaseFunctions = () => {
-  const app = initializeFirebase();
   return getFunctions(app);
 };
 
@@ -78,7 +51,6 @@ export const generateQuest = async (questTitle: string): Promise<Array<{
 }>> => {
   try {
     // Verify user is authenticated
-    const auth = getAuth();
     if (!auth.currentUser) {
       throw new Error("User must be authenticated to use AI features");
     }
@@ -120,7 +92,6 @@ export const analyzeTask = async (taskTitle: string): Promise<{
 }> => {
   try {
     // Verify user is authenticated
-    const auth = getAuth();
     if (!auth.currentUser) {
       throw new Error("User must be authenticated to use AI features");
     }
@@ -273,7 +244,6 @@ export const generateChatResponse = async (
 }> => {
   try {
     // Verify user is authenticated
-    const auth = getAuth();
     if (!auth.currentUser) {
       throw new Error("User must be authenticated to use AI features");
     }
@@ -326,7 +296,6 @@ export const generateFollowUpResponse = async (
 ): Promise<string> => {
   try {
     // Verify user is authenticated
-    const auth = getAuth();
     if (!auth.currentUser) {
       throw new Error("User must be authenticated to use AI features");
     }
