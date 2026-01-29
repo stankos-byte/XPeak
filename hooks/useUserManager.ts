@@ -5,7 +5,7 @@ import { calculateLevel, getLevelProgress } from '../utils/gamification';
 import { auth } from '../config/firebase';
 import { getUser, setUser as saveUserToFirestore, subscribeToUser, setHistoryEntry } from '../services/firestoreService';
 import { gameToast } from '../components/ui/GameToast';
-import { addHistoryEntry, processHistory, migrateToDailyAggregates, HistoryEntry } from '../services/historyService';
+import { addHistoryEntry, processHistory, HistoryEntry } from '../services/historyService';
 
 const DEFAULT_LAYOUT: ProfileLayout = { 
   widgets: [
@@ -85,13 +85,7 @@ export const useUserManager = (): UseUserManagerReturn => {
                 widgets: [...firestoreUser.layout.widgets, ...newWidgets]
             } : DEFAULT_LAYOUT;
 
-            // Migrate legacy history format if needed
-            let historyToProcess = firestoreUser.history || [];
-            if (historyToProcess.length > 0 && 'taskId' in historyToProcess[0]) {
-              historyToProcess = migrateToDailyAggregates(historyToProcess as HistoryEntry[]);
-            }
-            
-            const { activeHistory } = processHistory(historyToProcess);
+            const { activeHistory } = processHistory(firestoreUser.history || []);
             
             setUserState({ ...firestoreUser, layout, history: activeHistory });
           } else {

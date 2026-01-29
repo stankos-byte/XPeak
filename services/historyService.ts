@@ -7,7 +7,7 @@
 
 import { DailyActivity } from '../types';
 
-// Legacy entry format (for migration)
+// Entry format for adding new history entries
 export interface HistoryEntry {
   date: string;
   xpGained: number;
@@ -203,30 +203,20 @@ export function addHistoryEntry(
 
 /**
  * Processes an existing history array to ensure it's within limits.
- * Useful for migration or cleanup operations.
+ * Useful for cleanup operations.
  * 
- * @param history - History array to process (can be legacy format or daily aggregates)
+ * @param history - Daily activity array to process
  * @param userId - Optional user ID
  * @returns Object with limited active history and any archived entries
  */
 export function processHistory(
-  history: DailyActivity[] | HistoryEntry[],
+  history: DailyActivity[],
   userId?: string
 ): {
   activeHistory: DailyActivity[];
   archivedData: ArchivedHistory | null;
 } {
-  // Check if this is legacy format (has taskId property) and convert if needed
-  let dailyHistory: DailyActivity[];
-  
-  if (history.length > 0 && 'taskId' in history[0]) {
-    // Legacy format - convert to daily aggregates
-    dailyHistory = aggregateByDate(history as HistoryEntry[]);
-  } else {
-    dailyHistory = history as DailyActivity[];
-  }
-  
-  const { activeHistory, entriesToArchive } = limitActiveHistory(dailyHistory);
+  const { activeHistory, entriesToArchive } = limitActiveHistory(history);
   
   const archivedData = entriesToArchive.length > 0
     ? archiveData(entriesToArchive, userId)
@@ -238,13 +228,3 @@ export function processHistory(
   };
 }
 
-/**
- * Migrates legacy history format (individual entries) to daily aggregates format.
- * This is a one-time migration function.
- * 
- * @param legacyHistory - Array of individual history entries
- * @returns Daily activity aggregates
- */
-export function migrateToDailyAggregates(legacyHistory: HistoryEntry[]): DailyActivity[] {
-  return aggregateByDate(legacyHistory);
-}

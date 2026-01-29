@@ -41,25 +41,47 @@ const missingVars = requiredEnvVars.filter(
   (varName) => !import.meta.env[varName]
 );
 
+const isFirebaseConfigured = missingVars.length === 0;
+
 if (missingVars.length > 0 && import.meta.env.DEV) {
   console.warn(
     `⚠️ Missing Firebase environment variables: ${missingVars.join(', ')}\n` +
     `Please create a .env.local file with your Firebase configuration.\n` +
-    `See FIREBASE_SETUP.md for instructions.`
+    `See FIREBASE_SETUP.md for instructions.\n` +
+    `The app will run in limited mode without Firebase.`
   );
 }
 
-// Initialize Firebase app (avoid multiple initializations)
-let app: FirebaseApp;
-if (getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
+// Initialize Firebase app only if configuration is valid
+let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
+let db: Firestore | null = null;
+
+if (isFirebaseConfigured) {
+  try {
+    if (getApps().length === 0) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApps()[0];
+    }
+    // Initialize Firebase services
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (error) {
+    console.error('Failed to initialize Firebase:', error);
+    if (import.meta.env.DEV) {
+      console.warn('App will continue without Firebase functionality.');
+    }
+  }
 } else {
-  app = getApps()[0];
+  if (import.meta.env.DEV) {
+    console.warn('Firebase is not configured. Some features will be unavailable.');
+  }
 }
 
-// Initialize Firebase services
-export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+// Export Firebase services (may be null if not configured)
+export { auth, db };
+export const isFirebaseReady = isFirebaseConfigured && app !== null;
 
 // Export the app instance (needed for Cloud Functions)
 export default app;
