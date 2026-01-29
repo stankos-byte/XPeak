@@ -1,8 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { isSignInWithEmailLink } from 'firebase/auth';
+import { auth } from '../../config/firebase';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { 
+    user, 
+    signInWithGoogle, 
+    sendMagicLink, 
+    signInWithPassword, 
+    error, 
+    clearError,
+    loading: authLoading 
+  } = useAuth();
+
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -10,6 +24,10 @@ const Login = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [authMode, setAuthMode] = useState<'magic-link' | 'password'>('magic-link');
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const slides = [
     {
@@ -45,21 +63,102 @@ const Login = () => {
     return () => clearInterval(timer);
   }, [slides.length]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (user) {
+      // Get the redirect path from location state, or default to /studio
+      const from = (location.state as any)?.from?.pathname || '/studio';
+      navigate(from, { replace: true });
+    }
+  }, [user, navigate, location.state]);
+
+  // Check for magic link on mount
+  useEffect(() => {
+    if (auth && isSignInWithEmailLink(auth, window.location.href)) {
+      // The AuthContext will handle the magic link completion
+      // Just show a loading state
+      setIsSubmitting(true);
+    }
+  }, []);
+
+  // Clear errors when switching modes
+  useEffect(() => {
+    clearError();
+    setLocalError(null);
+  }, [authMode, clearError]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For now, just navigate to the studio/dashboard
-    navigate('/studio');
+    setIsSubmitting(true);
+    setLocalError(null);
+
+    try {
+      if (authMode === 'magic-link') {
+        await sendMagicLink(formData.email);
+        setMagicLinkSent(true);
+      } else {
+        await signInWithPassword(formData.email, formData.password);
+        // Navigation will happen automatically via useEffect
+      }
+    } catch (err: any) {
+      setLocalError(err.message || 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleGoogleLogin = () => {
-    // Navigate to studio when Google button is clicked
-    navigate('/studio');
+  const handleGoogleLogin = async () => {
+    setIsSubmitting(true);
+    setLocalError(null);
+    try {
+      await signInWithGoogle();
+      // Navigation will happen automatically via useEffect
+    } catch (err: any) {
+      setLocalError(err.message || 'Failed to sign in with Google');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAppleLogin = () => {
-    // Navigate to studio when Apple button is clicked
-    navigate('/studio');
+    // Apple Sign-In would require additional setup
+    setLocalError('Apple Sign-In is not yet available');
   };
+
+  const displayError = localError || error;
+
+  // Show success message if magic link was sent
+  if (magicLinkSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#1a1625] p-8">
+        <div className="w-full max-w-md text-center">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-white text-3xl font-semibold mb-3">Check your email</h2>
+            <p className="text-gray-400">
+              We've sent a magic link to <span className="text-white font-medium">{formData.email}</span>
+            </p>
+            <p className="text-gray-500 text-sm mt-2">
+              Click the link in the email to sign in. The link will expire in 1 hour.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setMagicLinkSent(false);
+              setFormData({ ...formData, email: '' });
+            }}
+            className="text-[#3b82f6] hover:text-blue-400 transition-colors font-medium"
+          >
+            Use a different email
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex bg-[#1a1625]">
@@ -201,6 +300,39 @@ const Login = () => {
             </p>
           </div>
 
+          {/* Error Display */}
+          {displayError && (
+            <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              {displayError}
+            </div>
+          )}
+
+          {/* Auth Mode Toggle */}
+          <div className="flex gap-2 mb-6">
+            <button
+              type="button"
+              onClick={() => setAuthMode('magic-link')}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                authMode === 'magic-link'
+                  ? 'bg-[#3b82f6] text-white'
+                  : 'bg-[#3a3447] text-gray-400 hover:text-white'
+              }`}
+            >
+              Magic Link
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode('password')}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                authMode === 'password'
+                  ? 'bg-[#3b82f6] text-white'
+                  : 'bg-[#3a3447] text-gray-400 hover:text-white'
+              }`}
+            >
+              Password
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
             <div>
@@ -211,62 +343,83 @@ const Login = () => {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
                 required
+                disabled={isSubmitting}
               />
             </div>
 
-            {/* Password */}
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Enter your password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
-              >
-                {showPassword ? (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
-              </button>
-            </div>
-
-            {/* Remember Me & Forgot Password */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+            {/* Password (only for password mode) */}
+            {authMode === 'password' && (
+              <div className="relative">
                 <input
-                  type="checkbox"
-                  id="remember"
-                  checked={formData.rememberMe}
-                  onChange={(e) => setFormData({ ...formData, rememberMe: e.target.checked })}
-                  className="w-4 h-4 rounded border-gray-600 bg-[#3a3447] text-[#3b82f6] focus:ring-[#3b82f6] focus:ring-2"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter your password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
+                  required
+                  disabled={isSubmitting}
                 />
-                <label htmlFor="remember" className="text-sm text-gray-400">
-                  Remember me
-                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                >
+                  {showPassword ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
               </div>
-              <a href="#" className="text-sm text-[#3b82f6] hover:text-blue-400 font-medium">
-                Forgot password?
-              </a>
-            </div>
+            )}
+
+            {/* Remember Me & Forgot Password (only for password mode) */}
+            {authMode === 'password' && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="remember"
+                    checked={formData.rememberMe}
+                    onChange={(e) => setFormData({ ...formData, rememberMe: e.target.checked })}
+                    className="w-4 h-4 rounded border-gray-600 bg-[#3a3447] text-[#3b82f6] focus:ring-[#3b82f6] focus:ring-2"
+                  />
+                  <label htmlFor="remember" className="text-sm text-gray-400">
+                    Remember me
+                  </label>
+                </div>
+                <a href="#" className="text-sm text-[#3b82f6] hover:text-blue-400 font-medium">
+                  Forgot password?
+                </a>
+              </div>
+            )}
+
+            {/* Magic Link Info */}
+            {authMode === 'magic-link' && (
+              <p className="text-gray-500 text-sm">
+                We'll send you a secure link to sign in without a password.
+              </p>
+            )}
 
             {/* Submit Button */}
             <button
               type="submit"
-              className="w-full py-3 rounded-lg bg-gradient-to-r from-[#3b82f6] to-purple-600 hover:from-[#2563eb] hover:to-purple-700 text-white font-medium transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 mt-6"
+              disabled={isSubmitting || authLoading}
+              className="w-full py-3 rounded-lg bg-gradient-to-r from-[#3b82f6] to-purple-600 hover:from-[#2563eb] hover:to-purple-700 text-white font-medium transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 mt-6 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              Log in
+              {isSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  <span>{authMode === 'magic-link' ? 'Sending...' : 'Signing in...'}</span>
+                </>
+              ) : (
+                <span>{authMode === 'magic-link' ? 'Send magic link' : 'Log in'}</span>
+              )}
             </button>
           </form>
 
@@ -285,7 +438,8 @@ const Login = () => {
             <button
               onClick={handleGoogleLogin}
               type="button"
-              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors"
+              disabled={isSubmitting}
+              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -299,7 +453,8 @@ const Login = () => {
             <button
               onClick={handleAppleLogin}
               type="button"
-              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors"
+              disabled={isSubmitting}
+              className="flex items-center justify-center gap-3 px-4 py-3 rounded-lg border border-gray-600 bg-[#3a3447] hover:bg-[#454152] text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
@@ -314,4 +469,3 @@ const Login = () => {
 };
 
 export default Login;
-

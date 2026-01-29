@@ -5,7 +5,9 @@ import AppLayout from './AppLayout';
 import Signup from './pages/auth/Signup';
 import Login from './pages/auth/Login';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { AuthProvider } from './contexts/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
+import ProtectedRoute from './components/ProtectedRoute';
 import { GameToaster } from './components/ui/GameToast';
 
 // Info Pages
@@ -30,44 +32,50 @@ const LandingPage: React.FC = () => {
   return <LandingView onGetStarted={handleGetStarted} />;
 };
 
-// Wrapper component for app routes that need the theme
+// Wrapper component for app routes that need the theme and auth protection
 const ThemedAppLayout: React.FC = () => {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <AppLayout />
-      </ThemeProvider>
-    </ErrorBoundary>
+    <ProtectedRoute>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <AppLayout />
+        </ThemeProvider>
+      </ErrorBoundary>
+    </ProtectedRoute>
   );
 };
 
 const App: React.FC = () => {
   return (
     <ErrorBoundary>
-      <GameToaster />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/signup" element={<Signup />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/app" element={<ThemedAppLayout />} />
-          <Route path="/studio" element={<ThemedAppLayout />} />
-          
-          {/* Info Routes */}
-          <Route path="/features" element={<Features />} />
-          <Route path="/pricing" element={<Pricing />} />
-          <Route path="/faq" element={<FAQ />} />
-          <Route path="/about" element={<AboutUs />} />
-          <Route path="/blog" element={<Blog />} />
-          <Route path="/feedback" element={<Feedback />} />
-          <Route path="/support" element={<Support />} />
-          <Route path="/privacy" element={<PrivacyPolicy />} />
-          <Route path="/terms" element={<TermsOfService />} />
-          
-          {/* 404 Catch-all Route */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <GameToaster />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/signup" element={<Signup />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/app" element={<ThemedAppLayout />} />
+            <Route path="/app/*" element={<ThemedAppLayout />} />
+            <Route path="/studio" element={<ThemedAppLayout />} />
+            <Route path="/studio/*" element={<ThemedAppLayout />} />
+            
+            {/* Info Routes */}
+            <Route path="/features" element={<Features />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/faq" element={<FAQ />} />
+            <Route path="/about" element={<AboutUs />} />
+            <Route path="/blog" element={<Blog />} />
+            <Route path="/feedback" element={<Feedback />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/terms" element={<TermsOfService />} />
+            
+            {/* 404 Catch-all Route */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </ErrorBoundary>
   );
 };

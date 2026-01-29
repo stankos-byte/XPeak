@@ -1,374 +1,249 @@
-import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
-import { GoogleGenAI } from "@google/genai";
-import { defineSecret } from "firebase-functions/params";
+/**
+ * Firebase Cloud Functions v2 for XPeak
+ * 
+ * This file contains all Cloud Functions for the XPeak gamification platform.
+ */
 
-// Define the secret for Gemini API key
-const geminiApiKey = defineSecret("GEMINI_API_KEY");
+import { setGlobalOptions } from "firebase-functions/v2";
+import { beforeUserCreated } from "firebase-functions/v2/identity";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { initializeApp } from "firebase-admin/app";
+import * as logger from "firebase-functions/logger";
 
 // Initialize Firebase Admin
-admin.initializeApp();
+initializeApp();
+
+// Get Firestore instance
+const db = getFirestore();
+
+// Set global options for all functions
+// For cost control, limit the maximum number of containers
+setGlobalOptions({ maxInstances: 10 });
+
+// ==========================================
+// Types and Enums (matching Firestore schema)
+// ==========================================
+
+enum SkillCategory {
+  PHYSICAL = "Physical",
+  MENTAL = "Mental",
+  PROFESSIONAL = "Professional",
+  SOCIAL = "Social",
+  CREATIVE = "Creative",
+  MISC = "Default",
+}
+
+enum AuthProvider {
+  GOOGLE = "google",
+  EMAIL = "email",
+  APPLE = "apple",
+}
+
+enum Theme {
+  DARK = "dark",
+  LIGHT = "light",
+}
+
+type WidgetId = "identity" | "skillMatrix" | "evolution" | "tasks" | "calendar" | "friends";
+
+interface WidgetConfig {
+  id: WidgetId;
+  enabled: boolean;
+  order: number;
+}
+
+interface SkillProgress {
+  category: SkillCategory;
+  xp: number;
+  level: number;
+}
+
+interface SkillsMap {
+  [key: string]: SkillProgress;
+}
+
+interface NotificationSettings {
+  deepWorkMode: boolean;
+  contractUpdates: boolean;
+  levelUps: boolean;
+}
+
+interface UserSettings {
+  theme: Theme;
+  notifications: NotificationSettings;
+}
+
+interface ProfileLayout {
+  widgets: WidgetConfig[];
+}
+
+// ==========================================
+// Helper Functions
+// ==========================================
 
 /**
- * Cloud Function to proxy Gemini API requests
- * This function handles all AI interactions securely on the server-side
+ * Creates the default skills map with all categories at level 1, 0 XP
  */
-export const geminiProxy = functions
-  .runWith({
-    secrets: [geminiApiKey],
-    timeoutSeconds: 60,
-    memory: "512MB",
-  })
-  .https
-  .onCall(async (data, context) => {
-    // Verify authentication
-    if (!context.auth) {
-      throw new functions.https.HttpsError(
-        "unauthenticated",
-        "User must be authenticated to use AI features"
-      );
-    }
-
-    // Validate request data
-    if (!data || typeof data !== "object") {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Request data must be an object"
-      );
-    }
-
-    const { action, payload } = data;
-
-    if (!action || typeof action !== "string") {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Action is required and must be a string"
-      );
-    }
-
-    // Validate action is from allowed list (prevent injection)
-    const allowedActions = [
-      "generateQuest",
-      "analyzeTask",
-      "generateChatResponse",
-      "generateFollowUpResponse",
-    ];
-    if (!allowedActions.includes(action)) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Invalid action specified"
-      );
-    }
-
-    // Validate payload exists
-    if (!payload || typeof payload !== "object") {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Payload is required and must be an object"
-      );
-    }
-
-    // Get API key from secrets
-    const apiKey = geminiApiKey.value();
-    if (!apiKey) {
-      throw new functions.https.HttpsError(
-        "internal",
-        "Gemini API key is not configured"
-      );
-    }
-
-    // Initialize Gemini client
-    const ai = new GoogleGenAI({ apiKey });
-
-    try {
-      switch (action) {
-        case "generateQuest": {
-          if (!payload || typeof payload.questTitle !== "string") {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "questTitle is required"
-            );
-          }
-
-          // Sanitize and validate input length
-          const questTitle = payload.questTitle.trim();
-          if (questTitle.length === 0 || questTitle.length > 500) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "questTitle must be between 1 and 500 characters"
-            );
-          }
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `Break down the operation "${questTitle}" into strategic phases and tasks. 
-            For each phase, provide a comprehensive list of tasks. 
-            Do not limit yourself to a small number; if a phase is complex, provide 5-10 actionable steps to fully complete it. 
-            Adjust the objective count based on the complexity of the phase.`,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "ARRAY",
-                items: {
-                  type: "OBJECT",
-                  properties: {
-                    title: { type: "STRING" },
-                    tasks: {
-                      type: "ARRAY",
-                      items: {
-                        type: "OBJECT",
-                        properties: {
-                          name: { type: "STRING" },
-                          difficulty: {
-                            type: "STRING",
-                            enum: ["Easy", "Medium", "Hard", "Epic"],
-                          },
-                          skillCategory: {
-                            type: "STRING",
-                            enum: [
-                              "Physical",
-                              "Mental",
-                              "Professional",
-                              "Social",
-                              "Creative",
-                              "Default",
-                            ],
-                          },
-                        },
-                        required: ["name", "difficulty", "skillCategory"],
-                      },
-                    },
-                  },
-                  required: ["title", "tasks"],
-                },
-              },
-            },
-          });
-
-          const result = JSON.parse(response.text || "[]");
-          return { success: true, data: result };
-        }
-
-        case "analyzeTask": {
-          if (!payload || typeof payload.taskTitle !== "string") {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "taskTitle is required"
-            );
-          }
-
-          // Sanitize and validate input length
-          const taskTitle = payload.taskTitle.trim();
-          if (taskTitle.length === 0 || taskTitle.length > 200) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "taskTitle must be between 1 and 200 characters"
-            );
-          }
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `Analyze this task title: "${taskTitle}". Determine the most appropriate SkillCategory (Physical, Mental, Professional, Social, Creative, Default) and Difficulty (Easy, Medium, Hard, Epic). Use 'Default' if the task doesn't fit specific skills.`,
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: "OBJECT",
-                properties: {
-                  difficulty: {
-                    type: "STRING",
-                    enum: ["Easy", "Medium", "Hard", "Epic"],
-                  },
-                  skillCategory: {
-                    type: "STRING",
-                    enum: [
-                      "Physical",
-                      "Mental",
-                      "Professional",
-                      "Social",
-                      "Creative",
-                      "Default",
-                    ],
-                  },
-                  suggestedDescription: { type: "STRING" },
-                },
-                required: ["difficulty", "skillCategory"],
-              },
-            },
-          });
-
-          const result = JSON.parse(response.text || "{}");
-          return {
-            success: true,
-            data: {
-              difficulty: result.difficulty,
-              skillCategory: result.skillCategory,
-              suggestedDescription: result.suggestedDescription,
-            },
-          };
-        }
-
-        case "generateChatResponse": {
-          if (
-            !payload ||
-            !Array.isArray(payload.messages) ||
-            typeof payload.userInput !== "string" ||
-            typeof payload.systemPrompt !== "string"
-          ) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "messages, userInput, and systemPrompt are required"
-            );
-          }
-
-          // Validate input lengths
-          const userInput = payload.userInput.trim();
-          if (userInput.length === 0 || userInput.length > 2000) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "userInput must be between 1 and 2000 characters"
-            );
-          }
-
-          if (payload.systemPrompt.length > 5000) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "systemPrompt must be less than 5000 characters"
-            );
-          }
-
-          // Validate message count and length
-          if (payload.messages.length > 50) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "Maximum 50 messages allowed"
-            );
-          }
-
-          // Validate each message
-          for (const msg of payload.messages) {
-            if (msg.text && typeof msg.text === "string" && msg.text.length > 2000) {
-              throw new functions.https.HttpsError(
-                "invalid-argument",
-                "Each message must be less than 2000 characters"
-              );
-            }
-          }
-
-          // Get tool definitions from payload (validate structure)
-          const tools = Array.isArray(payload.tools) ? payload.tools : [];
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: [
-              ...payload.messages
-                .filter((m: any) => m.role !== "system")
-                .map((m: any) => ({
-                  role: m.role === "user" ? "user" : "model",
-                  parts: [{ text: m.text || "" }],
-                })),
-              { role: "user", parts: [{ text: userInput }] },
-            ],
-            config: {
-              systemInstruction: payload.systemPrompt,
-              tools: tools.length > 0 ? [{ functionDeclarations: tools }] : undefined,
-            },
-          });
-
-          return {
-            success: true,
-            data: {
-              text: response.text,
-              functionCalls: response.functionCalls,
-              candidates: response.candidates,
-            },
-          };
-        }
-
-        case "generateFollowUpResponse": {
-          if (
-            !payload ||
-            !Array.isArray(payload.messages) ||
-            typeof payload.userInput !== "string" ||
-            typeof payload.systemPrompt !== "string" ||
-            !payload.previousResponse ||
-            !Array.isArray(payload.functionResponses)
-          ) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "All required fields must be provided"
-            );
-          }
-
-          // Validate input lengths
-          const userInput = payload.userInput.trim();
-          if (userInput.length === 0 || userInput.length > 2000) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "userInput must be between 1 and 2000 characters"
-            );
-          }
-
-          if (payload.systemPrompt.length > 5000) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "systemPrompt must be less than 5000 characters"
-            );
-          }
-
-          // Validate message count
-          if (payload.messages.length > 50) {
-            throw new functions.https.HttpsError(
-              "invalid-argument",
-              "Maximum 50 messages allowed"
-            );
-          }
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: [
-              ...payload.messages.map((m: any) => ({
-                role: m.role === "user" ? "user" : "model",
-                parts: [{ text: m.text || "" }],
-              })),
-              { role: "user", parts: [{ text: userInput }] },
-              payload.previousResponse.candidates?.[0]?.content,
-              {
-                role: "user",
-                parts: payload.functionResponses.map((fr: any) => ({
-                  functionResponse: fr,
-                })),
-              },
-            ],
-            config: {
-              systemInstruction: payload.systemPrompt,
-            },
-          });
-
-          return {
-            success: true,
-            data: {
-              text: response.text || "Directives executed.",
-            },
-          };
-        }
-
-        default:
-          throw new functions.https.HttpsError(
-            "invalid-argument",
-            `Unknown action: ${action}`
-          );
-      }
-    } catch (error: any) {
-      console.error("Gemini API error:", error);
-      
-      // Don't expose internal errors to client
-      if (error instanceof functions.https.HttpsError) {
-        throw error;
-      }
-      
-      throw new functions.https.HttpsError(
-        "internal",
-        "An error occurred while processing the AI request"
-      );
-    }
+function createDefaultSkills(): SkillsMap {
+  const skills: SkillsMap = {};
+  
+  Object.values(SkillCategory).forEach((category) => {
+    skills[category] = {
+      category: category as SkillCategory,
+      xp: 0,
+      level: 1,
+    };
   });
+  
+  return skills;
+}
+
+/**
+ * Creates the default profile layout with all widgets enabled
+ */
+function createDefaultLayout(): ProfileLayout {
+  const widgetIds: WidgetId[] = ["identity", "skillMatrix", "evolution", "tasks", "calendar", "friends"];
+  
+  return {
+    widgets: widgetIds.map((id, index) => ({
+      id,
+      enabled: true,
+      order: index,
+    })),
+  };
+}
+
+/**
+ * Creates the default user settings
+ */
+function createDefaultSettings(): UserSettings {
+  return {
+    theme: Theme.DARK,
+    notifications: {
+      deepWorkMode: false,
+      contractUpdates: true,
+      levelUps: true,
+    },
+  };
+}
+
+/**
+ * Determines the auth provider from the provider data
+ */
+function getAuthProvider(providerData: Array<{ providerId: string }> | undefined): AuthProvider {
+  if (!providerData || providerData.length === 0) {
+    return AuthProvider.EMAIL;
+  }
+  
+  const providerId = providerData[0].providerId;
+  
+  if (providerId === "google.com") {
+    return AuthProvider.GOOGLE;
+  } else if (providerId === "apple.com") {
+    return AuthProvider.APPLE;
+  }
+  
+  return AuthProvider.EMAIL;
+}
+
+/**
+ * Extracts a display name from email if no display name is provided
+ */
+function getDisplayName(displayName: string | undefined, email: string | undefined): string {
+  if (displayName) {
+    return displayName;
+  }
+  
+  if (email) {
+    // Extract the part before @ as the display name
+    return email.split("@")[0];
+  }
+  
+  return "Operative";
+}
+
+// ==========================================
+// Cloud Functions
+// ==========================================
+
+/**
+ * beforeUserCreated - Triggered before a new user is created
+ * 
+ * This function runs synchronously during user creation and can:
+ * - Validate user data
+ * - Set custom claims
+ * - Block user creation if needed
+ * 
+ * We use this to create the initial Firestore document.
+ * Note: beforeUserCreated runs before the user is fully created,
+ * so we need to be careful about what we access.
+ */
+export const onUserCreate = beforeUserCreated(async (event) => {
+  const user = event.data;
+  
+  logger.info("New user creation triggered", {
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName,
+  });
+  
+  try {
+    // Determine auth provider
+    const authProvider = getAuthProvider(user.providerData);
+    
+    // Get display name (fallback to email prefix)
+    const displayName = getDisplayName(user.displayName, user.email);
+    
+    // Create the initial user document
+    const userDocument = {
+      uid: user.uid,
+      email: user.email || "",
+      name: displayName,
+      photoURL: user.photoURL || null,
+      createdAt: FieldValue.serverTimestamp(),
+      lastLoginAt: FieldValue.serverTimestamp(),
+      authProvider: authProvider,
+      totalXP: 0,
+      level: 1,
+      identity: "",
+      skills: createDefaultSkills(),
+      goals: [],
+      templates: [],
+      layout: createDefaultLayout(),
+      settings: createDefaultSettings(),
+    };
+    
+    // Create the user document in Firestore
+    await db.collection("users").doc(user.uid).set(userDocument);
+    
+    logger.info("Successfully created user document", {
+      uid: user.uid,
+      authProvider: authProvider,
+    });
+    
+    // Return nothing to allow the user creation to proceed
+    return;
+  } catch (error) {
+    logger.error("Error creating user document", {
+      uid: user.uid,
+      error: error,
+    });
+    
+    // Don't throw - allow user creation to proceed even if Firestore fails
+    // The document can be created later on first login
+    return;
+  }
+});
+
+/**
+ * Alternative: Use Auth onCreate trigger (runs after user creation)
+ * This is a backup in case beforeUserCreated doesn't work as expected
+ * 
+ * Uncomment this if you prefer post-creation initialization:
+ */
+// import { onCall } from "firebase-functions/v2/https";
+// import { auth } from "firebase-functions/v1";
+// 
+// export const onUserCreateV1 = auth.user().onCreate(async (user) => {
+//   // Same logic as above
+// });
