@@ -1,86 +1,9 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // ==========================================
-    // USERS COLLECTION
-    // ==========================================
-    match /users/{userId} {
-      // Users can read/write their own document
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      
-      // Allow reading public profile data for leaderboards
-      allow read: if request.auth != null;
-      
-      // Friends subcollection
-      match /friends/{friendId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Tasks subcollection
-      match /tasks/{taskId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Quests subcollection
-      match /quests/{questId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Oracle Chat subcollection
-      match /oracleChat/{messageId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Active Challenges subcollection
-      match /activeChallenges/{challengeId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // History subcollection
-      match /history/{date} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-      
-      // Archived History subcollection
-      match /archivedHistory/{archiveId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-      }
-    }
-    
-    // ==========================================
-    // FRIEND REQUESTS COLLECTION
-    // ==========================================
-    match /friendRequests/{requestId} {
-      // Sender can create and read their requests
-      allow create: if request.auth != null 
-                    && request.resource.data.fromUID == request.auth.uid;
-      
-      // Both sender and recipient can read
-      allow read: if request.auth != null 
-                  && (resource.data.fromUID == request.auth.uid 
-                      || resource.data.toUID == request.auth.uid);
-      
-      // Recipient can update (accept/reject)
-      allow update: if request.auth != null 
-                    && resource.data.toUID == request.auth.uid;
-      
-      // Sender can delete (cancel request)
-      allow delete: if request.auth != null 
-                    && resource.data.fromUID == request.auth.uid;
-    }
-    
-    // ==========================================
-    // CHALLENGES COLLECTION
-    // ==========================================
-    match /challenges/{challengeId} {
-      // Participants can read and write
-      allow read, write: if request.auth != null 
-                         && request.auth.uid in resource.data.partnerIds;
-      
-      // Creator can create
-      allow create: if request.auth != null 
-                    && request.resource.data.creatorUID == request.auth.uid;
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

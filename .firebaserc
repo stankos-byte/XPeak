@@ -1,5 +1,8 @@
 {
   "projects": {
-    "default": "your-project-id"
-  }
+    "default": "xpeak-prod-25154",
+    "xpeak-prod": "xpeak-prod-25154"
+  },
+  "targets": {},
+  "etags": {}
 }
