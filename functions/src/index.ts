@@ -181,6 +181,12 @@ function getDisplayName(displayName: string | undefined, email: string | undefin
 export const onUserCreate = beforeUserCreated(async (event) => {
   const user = event.data;
   
+  // Guard check - user should always exist, but TypeScript requires this
+  if (!user) {
+    logger.error("User data is undefined in beforeUserCreated event");
+    return;
+  }
+  
   logger.info("New user creation triggered", {
     uid: user.uid,
     email: user.email,

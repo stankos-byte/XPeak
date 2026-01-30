@@ -6,7 +6,9 @@ const Signup = () => {
   const navigate = useNavigate();
   const { 
     user, 
-    signInWithGoogle, 
+    signInWithGoogle,
+    signInAsTestUser,
+    isUsingEmulator,
     sendMagicLink, 
     signUpWithPassword, 
     error, 
@@ -121,6 +123,19 @@ const Signup = () => {
   const handleAppleSignup = () => {
     // Apple Sign-In would require additional setup
     setLocalError('Apple Sign-In is not yet available');
+  };
+
+  const handleTestLogin = async () => {
+    setIsSubmitting(true);
+    setLocalError(null);
+    try {
+      await signInAsTestUser();
+      // Navigation will happen automatically via useEffect
+    } catch (err: any) {
+      setLocalError(err.message || 'Failed to sign in as test user');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const displayError = localError || error;
@@ -470,6 +485,34 @@ const Signup = () => {
               <span>Apple</span>
             </button>
           </div>
+
+          {/* Test Login Button - Only visible when using Firebase Emulator */}
+          {isUsingEmulator && (
+            <div className="mt-6">
+              <div className="relative mb-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-orange-500/30"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-4 bg-[#1a1625] text-orange-400">Emulator Mode</span>
+                </div>
+              </div>
+              <button
+                onClick={handleTestLogin}
+                type="button"
+                disabled={isSubmitting}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg border-2 border-dashed border-orange-500/50 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                <span>Quick Test Login</span>
+              </button>
+              <p className="text-orange-400/60 text-xs text-center mt-2">
+                Creates a test account (test@example.com) for local development
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

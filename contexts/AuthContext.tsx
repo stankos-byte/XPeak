@@ -3,6 +3,8 @@ import {
   User,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendSignInLinkToEmail,
@@ -12,14 +14,16 @@ import {
   onAuthStateChanged,
   ActionCodeSettings,
 } from 'firebase/auth';
-import { auth } from '../config/firebase';
+import { auth, useEmulators } from '../config/firebase';
 
 // Types
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
+  isUsingEmulator: boolean;
   signInWithGoogle: () => Promise<void>;
+  signInAsTestUser: () => Promise<void>;
   sendMagicLink: (email: string) => Promise<void>;
   completeMagicLinkSignIn: (email: string) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
@@ -101,6 +105,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkMagicLink();
   }, []);
 
+  // Handle redirect result (for emulator Google sign-in)
+  useEffect(() => {
+    if (!auth) return;
+
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          // User successfully signed in via redirect
+          console.log('Redirect sign-in successful');
+        }
+      } catch (err: any) {
+        setError(err.message || 'Failed to complete sign-in');
+      }
+    };
+
+    handleRedirectResult();
+  }, []);
+
   // Sign in with Google
   const signInWithGoogle = async () => {
     if (!auth) {
@@ -111,7 +134,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setError(null);
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      
+      // Use redirect for emulator (popup doesn't work reliably with emulator)
+      // Use popup for production (better UX)
+      if (useEmulators) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        await signInWithPopup(auth, provider);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to sign in with Google');
       throw err;
@@ -205,6 +235,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Sign in as test user (for emulator only)
+  const signInAsTestUser = async () => {
+    if (!auth) {
+      setError('Firebase is not configured');
+      return;
+    }
+
+    if (!useEmulators) {
+      setError('Test login is only available in emulator mode');
+      return;
+    }
+
+    try {
+      setError(null);
+      const testEmail = 'test@example.com';
+      const testPassword = 'testpassword123';
+      
+      try {
+        // Try to sign in first (in case user already exists)
+        await signInWithEmailAndPassword(auth, testEmail, testPassword);
+      } catch {
+        // If sign in fails, create the account
+        await createUserWithEmailAndPassword(auth, testEmail, testPassword);
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to sign in as test user');
+      throw err;
+    }
+  };
+
   // Clear error
   const clearError = () => setError(null);
 
@@ -212,7 +272,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     user,
     loading,
     error,
+    isUsingEmulator: useEmulators,
     signInWithGoogle,
+    signInAsTestUser,
     sendMagicLink,
     completeMagicLinkSignIn,
     signInWithPassword,
