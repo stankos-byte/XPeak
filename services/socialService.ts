@@ -32,51 +32,69 @@ const MOCK_OPERATIVES: Operative[] = [
   { id: '5', name: 'Glitch-Witch', level: 15, xp: 6200, status: 'offline', lastActive: '3d ago', color: '#ec4899' },
 ];
 
+// Helper to create expiration date from duration string
+const createExpiresAt = (daysFromNow: number): string => {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return date.toISOString();
+};
+
+// Mock user IDs for demo purposes
+const MOCK_CURRENT_USER_ID = 'currentUser';
+const MOCK_OPPONENT_ID = '1';
+const MOCK_PARTNER_ID = '2';
+
 const MOCK_CONTRACTS: Contract[] = [
   { 
     id: 'c1', 
     title: 'Sprint to Level 13', 
     description: 'First operative to reach Level 13 secures the bounty.', 
-    partnerIds: ['1'],
+    creatorUID: MOCK_CURRENT_USER_ID,
+    partnerIds: [MOCK_CURRENT_USER_ID, MOCK_OPPONENT_ID],
     mode: 'competitive',
+    status: 'active',
     categories: [
       {
         id: 'cat1',
         title: 'Week 1 - Foundation',
         tasks: [
-          { task_id: 't1', name: '30min morning workout', myStatus: 'completed', opponentStatus: 'completed', difficulty: 'Easy', skillCategory: 'Physical' },
-          { task_id: 't2', name: 'Read 20 pages', myStatus: 'completed', opponentStatus: 'in-progress', difficulty: 'Easy', skillCategory: 'Mental' },
-          { task_id: 't3', name: 'Complete coding challenge', myStatus: 'in-progress', opponentStatus: 'pending', difficulty: 'Medium', skillCategory: 'Professional' },
+          { task_id: 't1', name: '30min morning workout', statusByUser: { [MOCK_CURRENT_USER_ID]: 'completed', [MOCK_OPPONENT_ID]: 'completed' }, difficulty: 'Easy', skillCategory: 'Physical' },
+          { task_id: 't2', name: 'Read 20 pages', statusByUser: { [MOCK_CURRENT_USER_ID]: 'completed', [MOCK_OPPONENT_ID]: 'in-progress' }, difficulty: 'Easy', skillCategory: 'Mental' },
+          { task_id: 't3', name: 'Complete coding challenge', statusByUser: { [MOCK_CURRENT_USER_ID]: 'in-progress', [MOCK_OPPONENT_ID]: 'pending' }, difficulty: 'Medium', skillCategory: 'Professional' },
         ]
       },
       {
         id: 'cat2',
         title: 'Week 2 - Intensity',
         tasks: [
-          { task_id: 't4', name: '45min cardio session', myStatus: 'pending', opponentStatus: 'pending', difficulty: 'Medium', skillCategory: 'Physical' },
-          { task_id: 't5', name: 'Learn new programming concept', myStatus: 'pending', opponentStatus: 'pending', difficulty: 'Hard', skillCategory: 'Professional' },
+          { task_id: 't4', name: '45min cardio session', statusByUser: { [MOCK_CURRENT_USER_ID]: 'pending', [MOCK_OPPONENT_ID]: 'pending' }, difficulty: 'Medium', skillCategory: 'Physical' },
+          { task_id: 't5', name: 'Learn new programming concept', statusByUser: { [MOCK_CURRENT_USER_ID]: 'pending', [MOCK_OPPONENT_ID]: 'pending' }, difficulty: 'Hard', skillCategory: 'Professional' },
         ]
       }
     ],
-    timeLeft: '2d 4h' 
+    expiresAt: createExpiresAt(2),
+    createdAt: new Date().toISOString()
   },
   { 
     id: 'c2', 
     title: 'Deep Work Protocol', 
     description: 'Work together to complete all productivity tasks.', 
-    partnerIds: ['2'],
+    creatorUID: MOCK_CURRENT_USER_ID,
+    partnerIds: [MOCK_CURRENT_USER_ID, MOCK_PARTNER_ID],
     mode: 'coop',
+    status: 'active',
     categories: [
       {
         id: 'cat3',
         title: 'Daily Rituals',
         tasks: [
-          { task_id: 't6', name: 'Morning meditation 10min', status: 'completed', completedBy: 'Protocol-01', difficulty: 'Easy', skillCategory: 'Mental' },
-          { task_id: 't7', name: 'Journal 5 min', status: 'pending', difficulty: 'Easy', skillCategory: 'Creative' },
+          { task_id: 't6', name: 'Morning meditation 10min', statusByUser: { [MOCK_CURRENT_USER_ID]: 'completed' }, completedBy: 'Protocol-01', difficulty: 'Easy', skillCategory: 'Mental' },
+          { task_id: 't7', name: 'Journal 5 min', statusByUser: {}, difficulty: 'Easy', skillCategory: 'Creative' },
         ]
       }
     ],
-    timeLeft: '18h' 
+    expiresAt: createExpiresAt(1),
+    createdAt: new Date().toISOString()
   },
 ];
 

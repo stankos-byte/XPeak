@@ -3,6 +3,7 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
 import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions, Functions, connectFunctionsEmulator } from 'firebase/functions';
+import { getStorage, FirebaseStorage, connectStorageEmulator } from 'firebase/storage';
 
 // Firebase configuration from environment variables
 const firebaseConfig = {
@@ -32,6 +33,10 @@ const EMULATOR_CONFIG = {
     host: '127.0.0.1',
     port: 5001,
   },
+  storage: {
+    host: '127.0.0.1',
+    port: 9199,
+  },
 };
 
 // Validate that Firebase config is present
@@ -49,6 +54,7 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let functions: Functions | null = null;
+let storage: FirebaseStorage | null = null;
 
 // Track if emulators have been connected (to prevent duplicate connections)
 let emulatorsConnected = false;
@@ -59,6 +65,7 @@ if (isFirebaseConfigured()) {
   auth = getAuth(app);
   db = getFirestore(app);
   functions = getFunctions(app);
+  storage = getStorage(app);
 
   // Connect to emulators if enabled (only once)
   if (useEmulators && !emulatorsConnected) {
@@ -83,6 +90,12 @@ if (isFirebaseConfigured()) {
         console.log('🔧 Connected to Functions Emulator');
       }
 
+      // Connect Storage emulator
+      if (storage) {
+        connectStorageEmulator(storage, EMULATOR_CONFIG.storage.host, EMULATOR_CONFIG.storage.port);
+        console.log('🔧 Connected to Storage Emulator');
+      }
+
       emulatorsConnected = true;
       console.log('🎮 Firebase Emulators connected. Access UI at http://127.0.0.1:4000');
     } catch (error) {
@@ -103,7 +116,7 @@ if (isFirebaseConfigured()) {
 }
 
 // Export Firebase services
-export { app, auth, db, functions, isFirebaseConfigured, useEmulators };
+export { app, auth, db, functions, storage, isFirebaseConfigured, useEmulators };
 
 // Type exports for convenience
-export type { FirebaseApp, Auth, Firestore, Functions };
+export type { FirebaseApp, Auth, Firestore, Functions, FirebaseStorage };

@@ -1,10 +1,24 @@
-import { useState, useEffect, useCallback } from 'react';
-import { UserProfile, SkillCategory, Goal, ProfileLayout, TaskTemplate } from '../types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { UserProfile, SkillCategory, Goal, ProfileLayout, TaskTemplate, DailyActivity, Task, MainQuest } from '../types';
 import { calculateLevel, getLevelProgress } from '../utils/gamification';
 import { storage, STORAGE_KEYS } from '../services/localStorage';
 import { persistenceService } from '../services/persistenceService';
 import { gameToast } from '../components/ui/GameToast';
 import { addHistoryEntry, processHistory, ArchivedHistory, migrateToDailyAggregates, HistoryEntry } from '../services/historyService';
+import { useAuth } from '../contexts/AuthContext';
+import { 
+  updateUserProfile, 
+  updateUserGoals, 
+  updateUserTemplates, 
+  updateUserLayout,
+  updateUserIdentity,
+  saveHistoryEntry,
+  getHistory,
+  migrateLocalStorageToFirestore,
+  getTasks,
+  getQuests
+} from '../services/firestoreDataService';
+import { getUserDocument } from '../services/firestoreUserService';
 
 const DEFAULT_LAYOUT: ProfileLayout = { 
   widgets: [
@@ -17,25 +31,25 @@ const DEFAULT_LAYOUT: ProfileLayout = {
   ] 
 };
 
-const getInitialUserLocal = (): UserProfile => {
-  const getDefaultUser = (): UserProfile => {
-    const skills = {} as Record<SkillCategory, { category: SkillCategory; xp: number; level: number }>;
-    Object.values(SkillCategory).forEach(cat => {
-      skills[cat] = { category: cat, xp: 0, level: 0 };
-    });
-    return { 
-      name: 'Protocol-01', 
-      totalXP: 0, 
-      level: 0, 
-      skills, 
-      history: [], 
-      identity: '', 
-      goals: [], 
-      templates: [], 
-      layout: DEFAULT_LAYOUT 
-    };
+const getDefaultUser = (): UserProfile => {
+  const skills = {} as Record<SkillCategory, { category: SkillCategory; xp: number; level: number }>;
+  Object.values(SkillCategory).forEach(cat => {
+    skills[cat] = { category: cat, xp: 0, level: 0 };
+  });
+  return { 
+    name: 'Protocol-01', 
+    totalXP: 0, 
+    level: 0, 
+    skills, 
+    history: [], 
+    identity: '', 
+    goals: [], 
+    templates: [], 
+    layout: DEFAULT_LAYOUT 
   };
+};
 
+const getInitialUserLocal = (): UserProfile => {
   const saved = storage.get<UserProfile | null>(STORAGE_KEYS.USER, null);
   
   if (saved) {
@@ -94,18 +108,133 @@ interface UseUserManagerReturn {
   setShowLevelUp: (value: { show: boolean; level: number } | null) => void;
   xpPopups: Record<string, number>;
   flashKey: number;
+  isLoading: boolean;
 }
 
 export const useUserManager = (): UseUserManagerReturn => {
+  const { user: authUser } = useAuth();
   const [user, setUser] = useState<UserProfile>(getInitialUserLocal);
   const [xpPopups, setXpPopups] = useState<Record<string, number>>({});
   const [flashKey, setFlashKey] = useState(0);
   const [showLevelUp, setShowLevelUp] = useState<{ show: boolean; level: number } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Track if we're syncing from Firestore
+  const isSyncingRef = useRef(false);
+  const initialLoadCompleteRef = useRef(false);
+  // Track if migration has been attempted
+  const migrationAttemptedRef = useRef(false);
 
-  // Save to localStorage (debounced)
+  // Load user data from Firestore when authenticated
+  useEffect(() => {
+    if (!authUser) {
+      initialLoadCompleteRef.current = false;
+      migrationAttemptedRef.current = false;
+      return;
+    }
+
+    const loadUserData = async () => {
+      setIsLoading(true);
+      try {
+        // Get user document from Firestore
+        const firestoreUser = await getUserDocument(authUser.uid);
+        
+        if (firestoreUser) {
+          // Convert Firestore user to UserProfile format
+          const firestoreSkills = {} as Record<SkillCategory, { category: SkillCategory; xp: number; level: number }>;
+          Object.entries(firestoreUser.skills).forEach(([key, value]) => {
+            firestoreSkills[key as SkillCategory] = {
+              category: key as SkillCategory,
+              xp: value.xp,
+              level: value.level
+            };
+          });
+
+          // Get history from subcollection
+          const history = await getHistory(authUser.uid);
+
+          const userProfile: UserProfile = {
+            name: firestoreUser.name,
+            totalXP: firestoreUser.totalXP,
+            level: firestoreUser.level,
+            skills: firestoreSkills,
+            history: history,
+            identity: firestoreUser.identity || '',
+            goals: firestoreUser.goals || [],
+            templates: firestoreUser.templates || [],
+            layout: firestoreUser.layout || DEFAULT_LAYOUT
+          };
+
+          // Check if we should migrate localStorage data
+          // Migrate if Firestore is empty but localStorage has data (tasks, quests, or user profile)
+          const localUser = getInitialUserLocal();
+          const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, []);
+          const localQuests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, []);
+          
+          // Check what Firestore has
+          const firestoreTasks = await getTasks(authUser.uid);
+          const firestoreQuests = await getQuests(authUser.uid);
+          
+          const hasLocalData = localUser.totalXP > 0 || localTasks.length > 0 || localQuests.length > 0;
+          const firestoreIsEmpty = firestoreUser.totalXP === 0 && firestoreTasks.length === 0 && firestoreQuests.length === 0;
+          
+          if (!migrationAttemptedRef.current && firestoreIsEmpty && hasLocalData) {
+            migrationAttemptedRef.current = true;
+            console.log('📦 Detected localStorage data to migrate...');
+            console.log(`   - User XP: ${localUser.totalXP}`);
+            console.log(`   - Tasks: ${localTasks.length}`);
+            console.log(`   - Quests: ${localQuests.length}`);
+            
+            // Migrate ALL localStorage data to Firestore (including tasks and quests)
+            await migrateLocalStorageToFirestore(authUser.uid, {
+              userProfile: {
+                totalXP: localUser.totalXP,
+                level: localUser.level,
+                skills: Object.fromEntries(
+                  Object.entries(localUser.skills).map(([key, value]) => [key, { xp: value.xp, level: value.level }])
+                ) as Record<SkillCategory, { xp: number; level: number }>,
+                identity: localUser.identity,
+                goals: localUser.goals,
+                templates: localUser.templates,
+                layout: localUser.layout
+              },
+              history: localUser.history,
+              tasks: localTasks,
+              quests: localQuests
+            });
+
+            // Use the local data since we just migrated it
+            isSyncingRef.current = true;
+            setUser(localUser);
+            isSyncingRef.current = false;
+            
+            console.log('✅ Migration complete! All data synced to cloud.');
+          } else {
+            isSyncingRef.current = true;
+            setUser(userProfile);
+            isSyncingRef.current = false;
+          }
+        }
+        
+        initialLoadCompleteRef.current = true;
+      } catch (error) {
+        console.error('Failed to load user data from Firestore:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadUserData();
+  }, [authUser]);
+
+  // Save to localStorage when not authenticated (fallback)
   useEffect(() => { 
-    persistenceService.set(STORAGE_KEYS.USER, user); 
-  }, [user]);
+    if (isSyncingRef.current) return;
+    
+    if (!authUser) {
+      persistenceService.set(STORAGE_KEYS.USER, user); 
+    }
+  }, [user, authUser]);
 
   const levelProgress = getLevelProgress(user.totalXP, user.level);
 
@@ -151,6 +280,27 @@ export const useUserManager = (): UseUserManagerReturn => {
         persistenceService.set(STORAGE_KEYS.ARCHIVED_HISTORY, [...existingArchives, archivedData]);
       }
 
+      // Save to Firestore if authenticated
+      if (authUser) {
+        // Convert skills to Firestore format
+        const firestoreSkills = Object.fromEntries(
+          Object.entries(newSkills).map(([key, value]) => [key, { xp: value.xp, level: value.level }])
+        ) as Record<SkillCategory, { xp: number; level: number }>;
+
+        updateUserProfile(authUser.uid, {
+          totalXP: newTotalXP,
+          level: newLevel,
+          skills: firestoreSkills
+        }).catch(console.error);
+
+        // Save the history entry
+        const dateKey = new Date().toISOString().split('T')[0];
+        const historyEntry = activeHistory.find(h => h.date === dateKey);
+        if (historyEntry) {
+          saveHistoryEntry(authUser.uid, historyEntry).catch(console.error);
+        }
+      }
+
       return {
         ...prev,
         totalXP: newTotalXP,
@@ -174,50 +324,90 @@ export const useUserManager = (): UseUserManagerReturn => {
       popupKeys.forEach((k: string) => delete n[k]); 
       return n; 
     }), 1500);
-  }, []);
+  }, [authUser]);
 
   const updateIdentity = useCallback((identity: string) => {
     setUser(prev => ({ ...prev, identity }));
-  }, []);
+    
+    // Save to Firestore if authenticated
+    if (authUser) {
+      updateUserIdentity(authUser.uid, identity).catch(console.error);
+    }
+  }, [authUser]);
 
   const addGoal = useCallback((title: string) => {
-    setUser(prev => ({ 
-      ...prev, 
-      goals: [{ id: crypto.randomUUID(), title, completed: false }, ...prev.goals] 
-    }));
-  }, []);
+    setUser(prev => {
+      const newGoals = [{ id: crypto.randomUUID(), title, completed: false }, ...prev.goals];
+      
+      // Save to Firestore if authenticated
+      if (authUser) {
+        updateUserGoals(authUser.uid, newGoals).catch(console.error);
+      }
+      
+      return { ...prev, goals: newGoals };
+    });
+  }, [authUser]);
 
   const toggleGoal = useCallback((id: string) => {
-    setUser(prev => ({ 
-      ...prev, 
-      goals: prev.goals.map((g: Goal) => g.id === id ? { ...g, completed: !g.completed } : g) 
-    }));
-  }, []);
+    setUser(prev => {
+      const newGoals = prev.goals.map((g: Goal) => g.id === id ? { ...g, completed: !g.completed } : g);
+      
+      // Save to Firestore if authenticated
+      if (authUser) {
+        updateUserGoals(authUser.uid, newGoals).catch(console.error);
+      }
+      
+      return { ...prev, goals: newGoals };
+    });
+  }, [authUser]);
 
   const deleteGoal = useCallback((id: string) => {
-    setUser(prev => ({ 
-      ...prev, 
-      goals: prev.goals.filter((g: Goal) => g.id !== id) 
-    }));
-  }, []);
+    setUser(prev => {
+      const newGoals = prev.goals.filter((g: Goal) => g.id !== id);
+      
+      // Save to Firestore if authenticated
+      if (authUser) {
+        updateUserGoals(authUser.uid, newGoals).catch(console.error);
+      }
+      
+      return { ...prev, goals: newGoals };
+    });
+  }, [authUser]);
 
   const updateLayout = useCallback((layout: ProfileLayout) => {
     setUser(prev => ({ ...prev, layout }));
-  }, []);
+    
+    // Save to Firestore if authenticated
+    if (authUser) {
+      updateUserLayout(authUser.uid, layout).catch(console.error);
+    }
+  }, [authUser]);
 
   const saveTemplate = useCallback((template: TaskTemplate) => {
-    setUser(prev => ({
-      ...prev,
-      templates: [template, ...prev.templates]
-    }));
-  }, []);
+    setUser(prev => {
+      const newTemplates = [template, ...prev.templates];
+      
+      // Save to Firestore if authenticated
+      if (authUser) {
+        updateUserTemplates(authUser.uid, newTemplates).catch(console.error);
+      }
+      
+      return { ...prev, templates: newTemplates };
+    });
+  }, [authUser]);
 
   const deleteTemplate = useCallback((id: string) => {
-    setUser(prev => ({
-      ...prev,
-      templates: prev.templates.filter((t: TaskTemplate) => t.id !== id)
-    }));
-  }, []);
+    setUser(prev => {
+      const newTemplates = prev.templates.filter((t: TaskTemplate) => t.id !== id);
+      
+      // Save to Firestore if authenticated
+      if (authUser) {
+        updateUserTemplates(authUser.uid, newTemplates).catch(console.error);
+      }
+      
+      return { ...prev, templates: newTemplates };
+    });
+  }, [authUser]);
 
   return {
     user,
@@ -235,5 +425,6 @@ export const useUserManager = (): UseUserManagerReturn => {
     setShowLevelUp,
     xpPopups,
     flashKey,
+    isLoading,
   };
 };

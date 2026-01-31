@@ -1,0 +1,700 @@
+/**
+ * Firestore Data Service
+ * 
+ * Handles all Firestore operations for user data including:
+ * - Tasks (users/{uid}/tasks/{taskId})
+ * - Quests (users/{uid}/quests/{questId})
+ * - User profile updates (users/{uid})
+ * - History (users/{uid}/history/{date})
+ * - Oracle Chat (users/{uid}/oracleChat/{messageId})
+ */
+
+import {
+  doc,
+  collection,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  writeBatch,
+  query,
+  orderBy,
+  limit,
+  serverTimestamp,
+  Timestamp,
+  onSnapshot,
+  Unsubscribe,
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { 
+  Task, 
+  MainQuest, 
+  DailyActivity, 
+  SkillCategory, 
+  Goal, 
+  TaskTemplate, 
+  ProfileLayout,
+  ChatMessage 
+} from '../types';
+import { FirestoreSkillData } from './firestoreUserService';
+
+// ============================================
+// Types
+// ============================================
+
+export interface FirestoreTask {
+  id: string;
+  title: string;
+  description?: string;
+  difficulty: string;
+  skillCategory: string;
+  isHabit: boolean;
+  completed: boolean;
+  streak: number;
+  lastCompletedDate: Timestamp | null;
+  createdAt: Timestamp;
+}
+
+export interface FirestoreQuest {
+  id: string;
+  title: string;
+  categories: MainQuest['categories'];
+  createdAt: Timestamp;
+  completedAt: Timestamp | null;
+}
+
+export interface FirestoreHistory {
+  date: string;
+  totalXP: number;
+  taskCount: number;
+  taskIds?: string[];
+}
+
+export interface FirestoreChatMessage {
+  id: string;
+  role: 'user' | 'model' | 'system';
+  text?: string;
+  isTool?: boolean;
+  createdAt: Timestamp;
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+function taskToFirestore(task: Task): FirestoreTask {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description || '',
+    difficulty: task.difficulty,
+    skillCategory: task.skillCategory,
+    isHabit: task.isHabit,
+    completed: task.completed,
+    streak: task.streak,
+    lastCompletedDate: task.lastCompletedDate 
+      ? Timestamp.fromDate(new Date(task.lastCompletedDate)) 
+      : null,
+    createdAt: Timestamp.fromDate(new Date(task.createdAt)),
+  };
+}
+
+function taskFromFirestore(data: FirestoreTask): Task {
+  return {
+    id: data.id,
+    title: data.title,
+    description: data.description,
+    difficulty: data.difficulty as Task['difficulty'],
+    skillCategory: data.skillCategory as Task['skillCategory'],
+    isHabit: data.isHabit,
+    completed: data.completed,
+    streak: data.streak,
+    lastCompletedDate: data.lastCompletedDate?.toDate().toISOString() || null,
+    createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+  };
+}
+
+function questToFirestore(quest: MainQuest): FirestoreQuest {
+  return {
+    id: quest.id,
+    title: quest.title,
+    categories: quest.categories,
+    createdAt: serverTimestamp() as Timestamp,
+    completedAt: null,
+  };
+}
+
+function questFromFirestore(data: FirestoreQuest): MainQuest {
+  return {
+    id: data.id,
+    title: data.title,
+    categories: data.categories || [],
+  };
+}
+
+// ============================================
+// Tasks Operations
+// ============================================
+
+/**
+ * Get all tasks for a user
+ */
+export async function getTasks(uid: string): Promise<Task[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const tasksRef = collection(db, 'users', uid, 'tasks');
+  const q = query(tasksRef, orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => taskFromFirestore(doc.data() as FirestoreTask));
+}
+
+/**
+ * Subscribe to tasks changes (real-time updates)
+ */
+export function subscribeTasks(
+  uid: string, 
+  callback: (tasks: Task[]) => void
+): Unsubscribe {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const tasksRef = collection(db, 'users', uid, 'tasks');
+  const q = query(tasksRef, orderBy('createdAt', 'desc'));
+  
+  return onSnapshot(q, (snapshot) => {
+    const tasks = snapshot.docs.map(doc => taskFromFirestore(doc.data() as FirestoreTask));
+    callback(tasks);
+  });
+}
+
+/**
+ * Save a single task
+ */
+export async function saveTask(uid: string, task: Task): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const taskRef = doc(db, 'users', uid, 'tasks', task.id);
+  await setDoc(taskRef, taskToFirestore(task));
+}
+
+/**
+ * Save all tasks (batch operation)
+ */
+export async function saveTasks(uid: string, tasks: Task[]): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const batch = writeBatch(db);
+  
+  tasks.forEach(task => {
+    const taskRef = doc(db, 'users', uid, 'tasks', task.id);
+    batch.set(taskRef, taskToFirestore(task));
+  });
+  
+  await batch.commit();
+}
+
+/**
+ * Delete a task
+ */
+export async function deleteTask(uid: string, taskId: string): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const taskRef = doc(db, 'users', uid, 'tasks', taskId);
+  await deleteDoc(taskRef);
+}
+
+/**
+ * Update a task
+ */
+export async function updateTask(uid: string, taskId: string, updates: Partial<Task>): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const taskRef = doc(db, 'users', uid, 'tasks', taskId);
+  
+  // Convert date fields to Timestamps
+  const firestoreUpdates: Record<string, unknown> = { ...updates };
+  if (updates.lastCompletedDate !== undefined) {
+    firestoreUpdates.lastCompletedDate = updates.lastCompletedDate 
+      ? Timestamp.fromDate(new Date(updates.lastCompletedDate))
+      : null;
+  }
+  
+  await updateDoc(taskRef, firestoreUpdates);
+}
+
+// ============================================
+// Quests Operations
+// ============================================
+
+/**
+ * Get all quests for a user
+ */
+export async function getQuests(uid: string): Promise<MainQuest[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const questsRef = collection(db, 'users', uid, 'quests');
+  const snapshot = await getDocs(questsRef);
+  
+  return snapshot.docs.map(doc => questFromFirestore(doc.data() as FirestoreQuest));
+}
+
+/**
+ * Subscribe to quests changes (real-time updates)
+ */
+export function subscribeQuests(
+  uid: string, 
+  callback: (quests: MainQuest[]) => void
+): Unsubscribe {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const questsRef = collection(db, 'users', uid, 'quests');
+  
+  return onSnapshot(questsRef, (snapshot) => {
+    const quests = snapshot.docs.map(doc => questFromFirestore(doc.data() as FirestoreQuest));
+    callback(quests);
+  });
+}
+
+/**
+ * Save a single quest
+ */
+export async function saveQuest(uid: string, quest: MainQuest): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const questRef = doc(db, 'users', uid, 'quests', quest.id);
+  await setDoc(questRef, questToFirestore(quest));
+}
+
+/**
+ * Save all quests (batch operation)
+ */
+export async function saveQuests(uid: string, quests: MainQuest[]): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const batch = writeBatch(db);
+  
+  quests.forEach(quest => {
+    const questRef = doc(db, 'users', uid, 'quests', quest.id);
+    batch.set(questRef, questToFirestore(quest));
+  });
+  
+  await batch.commit();
+}
+
+/**
+ * Delete a quest
+ */
+export async function deleteQuest(uid: string, questId: string): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const questRef = doc(db, 'users', uid, 'quests', questId);
+  await deleteDoc(questRef);
+}
+
+/**
+ * Update a quest
+ */
+export async function updateQuest(uid: string, questId: string, updates: Partial<MainQuest>): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const questRef = doc(db, 'users', uid, 'quests', questId);
+  await updateDoc(questRef, updates as Record<string, unknown>);
+}
+
+// ============================================
+// User Profile Operations
+// ============================================
+
+/**
+ * Update user XP and level
+ */
+export async function updateUserXP(
+  uid: string, 
+  totalXP: number, 
+  level: number
+): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    totalXP,
+    level,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update user skills
+ */
+export async function updateUserSkills(
+  uid: string, 
+  skills: Record<SkillCategory, FirestoreSkillData>
+): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    skills,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update user identity
+ */
+export async function updateUserIdentity(uid: string, identity: string): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    identity,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update user goals
+ */
+export async function updateUserGoals(uid: string, goals: Goal[]): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    goals,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update user templates
+ */
+export async function updateUserTemplates(uid: string, templates: TaskTemplate[]): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    templates,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update user layout
+ */
+export async function updateUserLayout(uid: string, layout: ProfileLayout): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    layout,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update multiple user fields at once
+ */
+export async function updateUserProfile(
+  uid: string, 
+  updates: {
+    totalXP?: number;
+    level?: number;
+    skills?: Record<SkillCategory, FirestoreSkillData>;
+    identity?: string;
+    goals?: Goal[];
+    templates?: TaskTemplate[];
+    layout?: ProfileLayout;
+    name?: string;
+  }
+): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const userRef = doc(db, 'users', uid);
+  await updateDoc(userRef, {
+    ...updates,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ============================================
+// History Operations
+// ============================================
+
+/**
+ * Get history for a user (limited to recent entries)
+ */
+export async function getHistory(uid: string, limitCount = 365): Promise<DailyActivity[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const historyRef = collection(db, 'users', uid, 'history');
+  const q = query(historyRef, orderBy('date', 'desc'), limit(limitCount));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => doc.data() as DailyActivity);
+}
+
+/**
+ * Save or update a history entry for a specific date
+ */
+export async function saveHistoryEntry(uid: string, entry: DailyActivity): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const historyRef = doc(db, 'users', uid, 'history', entry.date);
+  await setDoc(historyRef, entry, { merge: true });
+}
+
+/**
+ * Save multiple history entries (batch)
+ */
+export async function saveHistory(uid: string, entries: DailyActivity[]): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const batch = writeBatch(db);
+  
+  entries.forEach(entry => {
+    const historyRef = doc(db, 'users', uid, 'history', entry.date);
+    batch.set(historyRef, entry, { merge: true });
+  });
+  
+  await batch.commit();
+}
+
+// ============================================
+// Oracle Chat Operations
+// ============================================
+
+/**
+ * Get chat messages for a user
+ */
+export async function getChatMessages(uid: string, limitCount = 100): Promise<ChatMessage[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const chatRef = collection(db, 'users', uid, 'oracleChat');
+  const q = query(chatRef, orderBy('createdAt', 'asc'), limit(limitCount));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => {
+    const data = doc.data() as FirestoreChatMessage;
+    return {
+      id: data.id,
+      role: data.role,
+      text: data.text,
+      isTool: data.isTool,
+    };
+  });
+}
+
+/**
+ * Save a chat message
+ */
+export async function saveChatMessage(uid: string, message: ChatMessage): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const messageRef = doc(db, 'users', uid, 'oracleChat', message.id);
+  await setDoc(messageRef, {
+    ...message,
+    createdAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Save multiple chat messages (batch)
+ */
+export async function saveChatMessages(uid: string, messages: ChatMessage[]): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const batch = writeBatch(db);
+  
+  messages.forEach(message => {
+    const messageRef = doc(db, 'users', uid, 'oracleChat', message.id);
+    batch.set(messageRef, {
+      ...message,
+      createdAt: serverTimestamp(),
+    });
+  });
+  
+  await batch.commit();
+}
+
+/**
+ * Clear all chat messages for a user
+ */
+export async function clearChatMessages(uid: string): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const chatRef = collection(db, 'users', uid, 'oracleChat');
+  const snapshot = await getDocs(chatRef);
+  
+  const batch = writeBatch(db);
+  snapshot.docs.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  
+  await batch.commit();
+}
+
+// ============================================
+// Reset User Data
+// ============================================
+
+/**
+ * Reset all user data to default state
+ * This will:
+ * - Reset XP, level, skills to 0
+ * - Clear identity, goals, templates
+ * - Delete all tasks, quests, history, and chat messages
+ */
+export async function resetUserData(uid: string): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  console.log('🔄 Resetting user data to defaults...');
+  
+  // Reset user profile to defaults
+  const userRef = doc(db, 'users', uid);
+  const defaultSkills: Record<string, { xp: number; level: number }> = {};
+  const skillCategories = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA', 'MISC'];
+  skillCategories.forEach(cat => {
+    defaultSkills[cat] = { xp: 0, level: 0 };
+  });
+  
+  await updateDoc(userRef, {
+    totalXP: 0,
+    level: 0,
+    skills: defaultSkills,
+    identity: '',
+    goals: [],
+    templates: [],
+    layout: { 
+      widgets: [
+        { id: 'identity', enabled: true, order: 0 }, 
+        { id: 'skillMatrix', enabled: true, order: 1 }, 
+        { id: 'evolution', enabled: true, order: 2 }, 
+        { id: 'calendar', enabled: true, order: 3 }, 
+        { id: 'friends', enabled: true, order: 4 },
+        { id: 'tasks', enabled: true, order: 5 }
+      ] 
+    },
+    updatedAt: serverTimestamp(),
+  });
+  console.log('✅ Reset user profile');
+  
+  // Delete all tasks
+  const tasksRef = collection(db, 'users', uid, 'tasks');
+  const tasksSnapshot = await getDocs(tasksRef);
+  if (tasksSnapshot.size > 0) {
+    const tasksBatch = writeBatch(db);
+    tasksSnapshot.docs.forEach(doc => tasksBatch.delete(doc.ref));
+    await tasksBatch.commit();
+    console.log(`✅ Deleted ${tasksSnapshot.size} tasks`);
+  }
+  
+  // Delete all quests
+  const questsRef = collection(db, 'users', uid, 'quests');
+  const questsSnapshot = await getDocs(questsRef);
+  if (questsSnapshot.size > 0) {
+    const questsBatch = writeBatch(db);
+    questsSnapshot.docs.forEach(doc => questsBatch.delete(doc.ref));
+    await questsBatch.commit();
+    console.log(`✅ Deleted ${questsSnapshot.size} quests`);
+  }
+  
+  // Delete all history
+  const historyRef = collection(db, 'users', uid, 'history');
+  const historySnapshot = await getDocs(historyRef);
+  if (historySnapshot.size > 0) {
+    const historyBatch = writeBatch(db);
+    historySnapshot.docs.forEach(doc => historyBatch.delete(doc.ref));
+    await historyBatch.commit();
+    console.log(`✅ Deleted ${historySnapshot.size} history entries`);
+  }
+  
+  // Delete all chat messages
+  const chatRef = collection(db, 'users', uid, 'oracleChat');
+  const chatSnapshot = await getDocs(chatRef);
+  if (chatSnapshot.size > 0) {
+    const chatBatch = writeBatch(db);
+    chatSnapshot.docs.forEach(doc => chatBatch.delete(doc.ref));
+    await chatBatch.commit();
+    console.log(`✅ Deleted ${chatSnapshot.size} chat messages`);
+  }
+  
+  console.log('🎉 User data reset complete! Refresh the page to see changes.');
+}
+
+// ============================================
+// Migration Helper
+// ============================================
+
+/**
+ * Migrate localStorage data to Firestore for a user
+ * Call this once when user first logs in and has existing localStorage data
+ */
+export async function migrateLocalStorageToFirestore(
+  uid: string,
+  data: {
+    tasks?: Task[];
+    quests?: MainQuest[];
+    history?: DailyActivity[];
+    userProfile?: {
+      totalXP?: number;
+      level?: number;
+      skills?: Record<SkillCategory, { xp: number; level: number }>;
+      identity?: string;
+      goals?: Goal[];
+      templates?: TaskTemplate[];
+      layout?: ProfileLayout;
+    };
+  }
+): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  console.log('🔄 Starting migration from localStorage to Firestore...');
+  
+  // Migrate tasks
+  if (data.tasks && data.tasks.length > 0) {
+    await saveTasks(uid, data.tasks);
+    console.log(`✅ Migrated ${data.tasks.length} tasks`);
+  }
+  
+  // Migrate quests
+  if (data.quests && data.quests.length > 0) {
+    await saveQuests(uid, data.quests);
+    console.log(`✅ Migrated ${data.quests.length} quests`);
+  }
+  
+  // Migrate history
+  if (data.history && data.history.length > 0) {
+    await saveHistory(uid, data.history);
+    console.log(`✅ Migrated ${data.history.length} history entries`);
+  }
+  
+  // Migrate user profile data
+  if (data.userProfile) {
+    const updates: Record<string, unknown> = {};
+    
+    if (data.userProfile.totalXP !== undefined) updates.totalXP = data.userProfile.totalXP;
+    if (data.userProfile.level !== undefined) updates.level = data.userProfile.level;
+    if (data.userProfile.skills) {
+      // Convert to Firestore format (remove redundant category field)
+      const firestoreSkills: Record<string, FirestoreSkillData> = {};
+      Object.entries(data.userProfile.skills).forEach(([key, value]) => {
+        firestoreSkills[key] = { xp: value.xp, level: value.level };
+      });
+      updates.skills = firestoreSkills;
+    }
+    if (data.userProfile.identity !== undefined) updates.identity = data.userProfile.identity;
+    if (data.userProfile.goals) updates.goals = data.userProfile.goals;
+    if (data.userProfile.templates) updates.templates = data.userProfile.templates;
+    if (data.userProfile.layout) updates.layout = data.userProfile.layout;
+    
+    if (Object.keys(updates).length > 0) {
+      updates.updatedAt = serverTimestamp();
+      const userRef = doc(db, 'users', uid);
+      await updateDoc(userRef, updates);
+      console.log('✅ Migrated user profile data');
+    }
+  }
+  
+  console.log('🎉 Migration complete!');
+}

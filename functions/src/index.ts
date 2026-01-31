@@ -52,14 +52,14 @@ interface WidgetConfig {
   order: number;
 }
 
-interface SkillProgress {
-  category: SkillCategory;
+// Simplified skill data - no redundant category field since the key IS the category
+interface SkillData {
   xp: number;
   level: number;
 }
 
 interface SkillsMap {
-  [key: string]: SkillProgress;
+  [key: string]: SkillData;
 }
 
 interface NotificationSettings {
@@ -82,16 +82,16 @@ interface ProfileLayout {
 // ==========================================
 
 /**
- * Creates the default skills map with all categories at level 1, 0 XP
+ * Creates the default skills map with all categories at level 0, 0 XP
+ * Note: Uses simplified format without redundant category field (key IS the category)
  */
 function createDefaultSkills(): SkillsMap {
   const skills: SkillsMap = {};
   
   Object.values(SkillCategory).forEach((category) => {
     skills[category] = {
-      category: category as SkillCategory,
       xp: 0,
-      level: 1,
+      level: 0,
     };
   });
   
@@ -207,10 +207,11 @@ export const onUserCreate = beforeUserCreated(async (event) => {
       name: displayName,
       photoURL: user.photoURL || null,
       createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
       lastLoginAt: FieldValue.serverTimestamp(),
       authProvider: authProvider,
       totalXP: 0,
-      level: 1,
+      level: 0,
       identity: "",
       skills: createDefaultSkills(),
       goals: [],

@@ -1,10 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Task, TaskTemplate, Difficulty, SkillCategory } from '../types';
 import { calculateXP } from '../utils/gamification';
 import { storage, STORAGE_KEYS } from '../services/localStorage';
 import { persistenceService } from '../services/persistenceService';
 import { useHabitSync } from './useHabitSync';
 import { gameToast } from '../components/ui/GameToast';
+import { useAuth } from '../contexts/AuthContext';
+import { 
+  getTasks, 
+  saveTask, 
+  deleteTask as firestoreDeleteTask,
+  updateTask
+} from '../services/firestoreDataService';
 
 interface UseTaskManagerReturn {
   tasks: Task[];
@@ -21,23 +28,73 @@ interface UseTaskManagerReturn {
   handleCreateTask: (data: Partial<Task>) => void;
   handleUpdateTask: (id: string, data: Partial<Task>) => void;
   handleAiCreateTask: (task: Partial<Task>) => void;
+  isLoading: boolean;
 }
 
 export const useTaskManager = (
   onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void,
   onSaveTemplate: (template: TaskTemplate) => void
 ): UseTaskManagerReturn => {
-  const [tasks, setTasks] = useState<Task[]>(() => storage.get<Task[]>(STORAGE_KEYS.TASKS, []));
+  const { user } = useAuth();
+  // Initialize with empty array - we'll load from the correct source in useEffect
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [isLoading, setIsLoading] = useState(true); // Start loading
+  
+  // Track if we're syncing from Firestore to prevent loops
+  const isSyncingRef = useRef(false);
+  // Track if initial load is complete
+  const initialLoadCompleteRef = useRef(false);
 
   // Sync habits daily
   useHabitSync(tasks, setTasks);
 
-  // Save to localStorage (debounced)
-  useEffect(() => { 
-    persistenceService.set(STORAGE_KEYS.TASKS, tasks); 
-  }, [tasks]);
+  // Load tasks from correct source based on auth state
+  useEffect(() => {
+    const loadTasks = async () => {
+      setIsLoading(true);
+      isSyncingRef.current = true;
+      
+      try {
+        if (user) {
+          // Authenticated: ALWAYS use Firestore as source of truth
+          const firestoreTasks = await getTasks(user.uid);
+          setTasks(firestoreTasks); // Use Firestore data even if empty
+        } else {
+          // Not authenticated: use localStorage
+          const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, []);
+          setTasks(localTasks);
+        }
+        initialLoadCompleteRef.current = true;
+      } catch (error) {
+        console.error('Failed to load tasks:', error);
+        // On error, fall back to localStorage
+        const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, []);
+        setTasks(localTasks);
+        initialLoadCompleteRef.current = true;
+      } finally {
+        isSyncingRef.current = false;
+        setIsLoading(false);
+      }
+    };
+
+    loadTasks();
+  }, [user]);
+
+  // Save to Firestore when tasks change (only after initial load)
+  useEffect(() => {
+    // Skip if syncing from Firestore or initial load not complete
+    if (isSyncingRef.current || !initialLoadCompleteRef.current) return;
+    
+    if (user) {
+      // Debounced save to Firestore - we handle individual saves in handlers
+      // This is a fallback for bulk state changes
+    } else {
+      // Save to localStorage when not authenticated
+      persistenceService.set(STORAGE_KEYS.TASKS, tasks);
+    }
+  }, [tasks, user]);
 
   const handleCompleteTask = useCallback((id: string) => {
     const task = tasks.find((t: Task) => t.id === id);
@@ -47,13 +104,25 @@ export const useTaskManager = (
     
     // Increment streak if habit
     const newStreak = task.isHabit ? (task.streak || 0) + 1 : 0;
+    const now = new Date().toISOString();
 
-    setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { 
-        ...t, 
-        completed: true, 
-        lastCompletedDate: new Date().toISOString(), 
-        streak: newStreak 
-    } : t));
+    const updatedTask = { 
+      ...task, 
+      completed: true, 
+      lastCompletedDate: now, 
+      streak: newStreak 
+    };
+
+    setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? updatedTask : t));
+
+    // Save to Firestore if authenticated
+    if (user) {
+      updateTask(user.uid, id, {
+        completed: true,
+        lastCompletedDate: now,
+        streak: newStreak
+      }).catch(console.error);
+    }
 
     onXPChange(amount, id, { [id]: amount }, task.skillCategory);
 
@@ -61,7 +130,7 @@ export const useTaskManager = (
     if (task.isHabit && newStreak > 1) {
       setTimeout(() => gameToast.streak(newStreak, task.title), 500);
     }
-  }, [tasks, onXPChange]);
+  }, [tasks, onXPChange, user]);
 
   const handleUncompleteTask = useCallback((id: string) => {
     const task = tasks.find((t: Task) => t.id === id);
@@ -79,12 +148,26 @@ export const useTaskManager = (
         streak: newStreak 
     } : t));
 
+    // Save to Firestore if authenticated
+    if (user) {
+      updateTask(user.uid, id, {
+        completed: false,
+        lastCompletedDate: null,
+        streak: newStreak
+      }).catch(console.error);
+    }
+
     onXPChange(amount, id, { [id]: amount }, task.skillCategory);
-  }, [tasks, onXPChange]);
+  }, [tasks, onXPChange, user]);
 
   const handleDeleteTask = useCallback((id: string) => {
     setTasks((prev: Task[]) => prev.filter((t: Task) => t.id !== id));
-  }, []);
+    
+    // Delete from Firestore if authenticated
+    if (user) {
+      firestoreDeleteTask(user.uid, id).catch(console.error);
+    }
+  }, [user]);
 
   const handleEditTask = useCallback((task: Task) => {
     setEditingTask(task);
@@ -104,7 +187,7 @@ export const useTaskManager = (
   }, []);
 
   const handleCreateTask = useCallback((data: Partial<Task>) => {
-    setTasks((prev: Task[]) => [{
+    const newTask: Task = {
       id: crypto.randomUUID(),
       title: data.title || 'New Task',
       description: data.description || '',
@@ -115,15 +198,27 @@ export const useTaskManager = (
       streak: 0,
       lastCompletedDate: null,
       createdAt: new Date().toISOString()
-    }, ...prev]);
-  }, []);
+    };
+
+    setTasks((prev: Task[]) => [newTask, ...prev]);
+
+    // Save to Firestore if authenticated
+    if (user) {
+      saveTask(user.uid, newTask).catch(console.error);
+    }
+  }, [user]);
 
   const handleUpdateTask = useCallback((id: string, data: Partial<Task>) => {
     setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { ...t, ...data } : t));
-  }, []);
+    
+    // Save to Firestore if authenticated
+    if (user) {
+      updateTask(user.uid, id, data).catch(console.error);
+    }
+  }, [user]);
 
   const handleAiCreateTask = useCallback((task: Partial<Task>) => {
-    setTasks((prev: Task[]) => [{
+    const newTask: Task = {
       id: crypto.randomUUID(),
       title: task.title || 'New Assignment',
       description: task.description || '',
@@ -134,8 +229,15 @@ export const useTaskManager = (
       streak: 0,
       lastCompletedDate: null,
       createdAt: new Date().toISOString()
-    }, ...prev]);
-  }, []);
+    };
+
+    setTasks((prev: Task[]) => [newTask, ...prev]);
+
+    // Save to Firestore if authenticated
+    if (user) {
+      saveTask(user.uid, newTask).catch(console.error);
+    }
+  }, [user]);
 
   return {
     tasks,
@@ -152,5 +254,6 @@ export const useTaskManager = (
     handleCreateTask,
     handleUpdateTask,
     handleAiCreateTask,
+    isLoading,
   };
 };

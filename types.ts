@@ -124,15 +124,17 @@ export interface Friend {
 
 export type ChallengeModeType = 'competitive' | 'coop';
 
+// Task status type for challenges
+export type TaskStatus = 'completed' | 'pending' | 'in-progress';
+
 export interface ChallengeQuestTask {
   task_id: string;
   name: string;
-  // For competitive mode: separate status tracking
-  myStatus?: 'completed' | 'pending' | 'in-progress';
-  opponentStatus?: 'completed' | 'pending' | 'in-progress';
-  // For coop mode: unified status and who completed it
-  status?: 'completed' | 'pending' | 'in-progress';
-  completedBy?: string; // User ID who completed (for coop tracking)
+  // Status tracking by user ID - works for both competitive and coop modes
+  // Key is the user's UID, value is their status for this task
+  statusByUser: Record<string, TaskStatus>;
+  // For coop mode: who completed it (optional, for display purposes)
+  completedBy?: string;
   difficulty: Difficulty;
   skillCategory: SkillCategory;
   description?: string;
@@ -144,16 +146,22 @@ export interface ChallengeQuestCategory {
   tasks: ChallengeQuestTask[];
 }
 
+// Challenge status enum
+export type ChallengeStatus = 'active' | 'completed' | 'cancelled' | 'expired';
+
 export interface FriendChallenge {
   id: string;
   title: string;
   description: string;
-  partnerIds: string[]; // Array to support multiple partners/opponents
+  creatorUID: string; // UID of challenge creator
+  partnerIds: string[]; // Array of all participant UIDs (including creator)
   categories: ChallengeQuestCategory[];
   mode: ChallengeModeType;
-  timeLeft: string;
+  status: ChallengeStatus;
+  expiresAt: string; // ISO timestamp - client calculates "time left" from this
+  createdAt: string; // ISO timestamp
   completedBy?: string; // For competitive: winner ID; For coop: tracks when mission completes
-  completedAt?: string;
+  completedAt?: string; // ISO timestamp
 }
 
 export interface ChatMessage {
@@ -162,3 +170,41 @@ export interface ChatMessage {
   text?: string;
   isTool?: boolean;
 }
+
+// ============================================
+// Utility functions for challenge data
+// ============================================
+
+/**
+ * Calculate human-readable time left from an ISO timestamp
+ * @param expiresAt ISO timestamp string
+ * @returns Human-readable string like "2d 4h", "18h", "5m", or "Expired"
+ */
+export const calculateTimeLeft = (expiresAt: string): string => {
+  const now = new Date();
+  const expiry = new Date(expiresAt);
+  const diffMs = expiry.getTime() - now.getTime();
+  
+  if (diffMs <= 0) return 'Expired';
+  
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (diffDays > 0) {
+    return diffHours > 0 ? `${diffDays}d ${diffHours}h` : `${diffDays}d`;
+  } else if (diffHours > 0) {
+    return `${diffHours}h`;
+  } else {
+    return `${diffMinutes}m`;
+  }
+};
+
+/**
+ * Check if a challenge has expired
+ * @param expiresAt ISO timestamp string
+ * @returns true if the challenge has expired
+ */
+export const isChallengeExpired = (expiresAt: string): boolean => {
+  return new Date(expiresAt).getTime() <= Date.now();
+};

@@ -140,6 +140,7 @@ The core user document containing profile data, gamification stats, and embedded
 | `name` | `string` | Yes | User's display name |
 | `photoURL` | `string \| null` | No | Profile photo URL |
 | `createdAt` | `timestamp` | Yes | Account creation timestamp |
+| `updatedAt` | `timestamp` | Yes | Last document update timestamp |
 | `lastLoginAt` | `timestamp` | Yes | Last login timestamp |
 | `authProvider` | `AuthProvider` | Yes | Authentication provider used |
 | `totalXP` | `number` | Yes | Total XP earned (indexed for leaderboards) |
@@ -156,16 +157,16 @@ The core user document containing profile data, gamification stats, and embedded
 ##### SkillsMap
 ```typescript
 interface SkillsMap {
-  [SkillCategory.PHYSICAL]: SkillProgress;
-  [SkillCategory.MENTAL]: SkillProgress;
-  [SkillCategory.PROFESSIONAL]: SkillProgress;
-  [SkillCategory.SOCIAL]: SkillProgress;
-  [SkillCategory.CREATIVE]: SkillProgress;
-  [SkillCategory.MISC]: SkillProgress;
+  [SkillCategory.PHYSICAL]: SkillData;
+  [SkillCategory.MENTAL]: SkillData;
+  [SkillCategory.PROFESSIONAL]: SkillData;
+  [SkillCategory.SOCIAL]: SkillData;
+  [SkillCategory.CREATIVE]: SkillData;
+  [SkillCategory.MISC]: SkillData;
 }
 
-interface SkillProgress {
-  category: SkillCategory;
+// Note: category field removed as it's redundant (the key IS the category)
+interface SkillData {
   xp: number;
   level: number;
 }
@@ -230,18 +231,19 @@ interface NotificationSettings {
   "name": "Protocol-01",
   "photoURL": "https://storage.googleapis.com/...",
   "createdAt": "2026-01-15T10:30:00Z",
+  "updatedAt": "2026-01-21T14:45:00Z",
   "lastLoginAt": "2026-01-21T14:45:00Z",
   "authProvider": "google",
   "totalXP": 4850,
   "level": 12,
   "identity": "I am becoming a disciplined software engineer who ships quality code daily.",
   "skills": {
-    "Physical": { "category": "Physical", "xp": 1200, "level": 5 },
-    "Mental": { "category": "Mental", "xp": 2100, "level": 8 },
-    "Professional": { "category": "Professional", "xp": 3500, "level": 10 },
-    "Social": { "category": "Social", "xp": 800, "level": 4 },
-    "Creative": { "category": "Creative", "xp": 450, "level": 3 },
-    "Default": { "category": "Default", "xp": 200, "level": 2 }
+    "Physical": { "xp": 1200, "level": 5 },
+    "Mental": { "xp": 2100, "level": 8 },
+    "Professional": { "xp": 3500, "level": 10 },
+    "Social": { "xp": 800, "level": 4 },
+    "Creative": { "xp": 450, "level": 3 },
+    "Default": { "xp": 200, "level": 2 }
   },
   "goals": [
     { "id": "g1", "title": "Complete 30-day coding streak", "completed": false },
@@ -335,10 +337,10 @@ Shared challenge documents that both participants can listen to for real-time up
 | `partnerIds` | `string[]` | Yes | Array of all participant/partner UIDs |
 | `mode` | `ChallengeMode` | Yes | Competitive or cooperative |
 | `categories` | `ChallengeCategory[]` | Yes | Challenge breakdown |
-| `status` | `ChallengeStatus` | Yes | active, completed, cancelled |
+| `status` | `ChallengeStatus` | Yes | active, completed, cancelled, expired |
 | `completedBy` | `string \| null` | No | Winner UID (competitive) or completion marker (coop) |
 | `completedAt` | `timestamp \| null` | No | When challenge was completed |
-| `timeLeft` | `string` | Yes | Time remaining (e.g., "7d", "2h") |
+| `expiresAt` | `timestamp` | Yes | When challenge expires (client calculates "time left") |
 | `createdAt` | `timestamp` | Yes | When challenge was created |
 
 #### Embedded Types
@@ -364,6 +366,8 @@ interface ChallengeCategory {
 
 ##### ChallengeTask
 ```typescript
+type TaskStatus = 'completed' | 'pending' | 'in-progress';
+
 interface ChallengeTask {
   task_id: string;
   name: string;
@@ -371,13 +375,13 @@ interface ChallengeTask {
   difficulty: Difficulty;
   skillCategory: SkillCategory;
   
-  // For competitive mode: separate status tracking per participant
-  myStatus?: 'completed' | 'pending' | 'in-progress';
-  opponentStatus?: 'completed' | 'pending' | 'in-progress';
+  // Status tracking by user ID - works for both competitive and coop modes
+  // Key is the user's UID, value is their status for this task
+  // Absent key = 'pending' (no need to store pending status)
+  statusByUser: Record<string, TaskStatus>;
   
-  // For coop mode: unified status and who completed it
-  status?: 'completed' | 'pending' | 'in-progress';
-  completedBy?: string;  // User ID who completed (for coop tracking)
+  // For coop mode: who completed it (for display purposes)
+  completedBy?: string;
 }
 ```
 
@@ -401,16 +405,20 @@ interface ChallengeTask {
           "name": "30min morning workout",
           "difficulty": "Easy",
           "skillCategory": "Physical",
-          "myStatus": "completed",
-          "opponentStatus": "pending"
+          "statusByUser": {
+            "user123": "completed",
+            "user456": "pending"
+          }
         },
         {
           "task_id": "t2",
           "name": "Read 20 pages",
           "difficulty": "Easy",
           "skillCategory": "Mental",
-          "myStatus": "completed",
-          "opponentStatus": "pending"
+          "statusByUser": {
+            "user123": "completed",
+            "user456": "in-progress"
+          }
         }
       ]
     }
@@ -418,7 +426,7 @@ interface ChallengeTask {
   "status": "active",
   "completedBy": null,
   "completedAt": null,
-  "timeLeft": "7d",
+  "expiresAt": "2026-01-28T10:00:00Z",
   "createdAt": "2026-01-21T10:00:00Z"
 }
 ```
@@ -443,7 +451,9 @@ interface ChallengeTask {
           "name": "Morning meditation 10min",
           "difficulty": "Easy",
           "skillCategory": "Mental",
-          "status": "completed",
+          "statusByUser": {
+            "user123": "completed"
+          },
           "completedBy": "user123"
         },
         {
@@ -451,8 +461,7 @@ interface ChallengeTask {
           "name": "Journal 5 min",
           "difficulty": "Easy",
           "skillCategory": "Creative",
-          "status": "pending",
-          "completedBy": null
+          "statusByUser": {}
         }
       ]
     }
@@ -460,7 +469,7 @@ interface ChallengeTask {
   "status": "active",
   "completedBy": null,
   "completedAt": null,
-  "timeLeft": "1d",
+  "expiresAt": "2026-01-22T06:00:00Z",
   "createdAt": "2026-01-21T06:00:00Z"
 }
 ```

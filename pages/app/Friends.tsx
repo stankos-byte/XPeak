@@ -15,6 +15,19 @@ interface FriendsViewProps {
   onToggleChallengeTask: (challengeId: string, categoryId: string, taskId: string) => void;
 }
 
+// TODO: Replace with actual user ID from auth context
+const CURRENT_USER_ID = 'currentUser';
+
+// Helper to check if a task is completed by a specific user
+const isTaskCompletedByUser = (task: ChallengeQuestTask, userId: string): boolean => {
+  return task.statusByUser[userId] === 'completed';
+};
+
+// Helper to get the opponent ID(s) from a challenge (everyone except current user)
+const getOpponentIds = (challenge: FriendChallenge, currentUserId: string): string[] => {
+  return challenge.partnerIds.filter(id => id !== currentUserId);
+};
+
 const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
   const [expandedChallenges, setExpandedChallenges] = useState<Record<string, boolean>>({});
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
@@ -66,23 +79,20 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
             const isCoop = challenge.mode === 'coop';
             
             const totalTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => sum + cat.tasks.length, 0);
+            const opponentIds = getOpponentIds(challenge, CURRENT_USER_ID);
+            const primaryOpponentId = opponentIds[0]; // For display purposes, use first opponent
             
-            let myCompletedTasks = 0;
-            let partnerCompletedTasks = 0;
+            // Count tasks completed by current user
+            const myCompletedTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
+              sum + cat.tasks.filter((t: ChallengeQuestTask) => isTaskCompletedByUser(t, CURRENT_USER_ID)).length, 0
+            );
             
-            if (isCoop) {
-              const completedTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
-                sum + cat.tasks.filter((t: ChallengeQuestTask) => t.status === 'completed').length, 0
-              );
-              myCompletedTasks = completedTasks;
-            } else {
-              myCompletedTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
-                sum + cat.tasks.filter((t: ChallengeQuestTask) => t.myStatus === 'completed').length, 0
-              );
-              partnerCompletedTasks = challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
-                sum + cat.tasks.filter((t: ChallengeQuestTask) => t.opponentStatus === 'completed').length, 0
-              );
-            }
+            // For competitive mode, count opponent's completed tasks
+            const partnerCompletedTasks = !isCoop && primaryOpponentId
+              ? challenge.categories.reduce((sum: number, cat: ChallengeQuestCategory) => 
+                  sum + cat.tasks.filter((t: ChallengeQuestTask) => isTaskCompletedByUser(t, primaryOpponentId)).length, 0
+                )
+              : 0;
             
             const myPercent = totalTasks > 0 ? Math.round((myCompletedTasks / totalTasks) * 100) : 0;
             const partnerPercent = totalTasks > 0 ? Math.round((partnerCompletedTasks / totalTasks) * 100) : 0;
@@ -224,7 +234,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
                               <div className="flex items-center gap-2">
                                 <span className="text-xs text-gray-400">
                                   {category.tasks.filter((t: ChallengeQuestTask) => 
-                                    isCoop ? t.status === 'completed' : t.myStatus === 'completed'
+                                    isTaskCompletedByUser(t, CURRENT_USER_ID)
                                   ).length} / {category.tasks.length}
                                 </span>
                                 {expandedCategories[categoryKey] ? (
@@ -239,10 +249,10 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
                             {expandedCategories[categoryKey] && (
                               <div className="space-y-2 pl-3">
                                 {category.tasks.map((task: ChallengeQuestTask) => {
-                                  const isCompleted = isCoop 
-                                    ? task.status === 'completed'
-                                    : task.myStatus === 'completed';
-                                  const opponentCompleted = !isCoop && task.opponentStatus === 'completed';
+                                  const opponentIds = getOpponentIds(challenge, CURRENT_USER_ID);
+                                  const primaryOpponentId = opponentIds[0];
+                                  const isCompleted = isTaskCompletedByUser(task, CURRENT_USER_ID);
+                                  const opponentCompleted = !isCoop && primaryOpponentId && isTaskCompletedByUser(task, primaryOpponentId);
                                   
                                   return (
                                     <div

@@ -128,11 +128,8 @@ const CreateChallengeModal: React.FC<CreateChallengeModalProps> = ({
       difficulty: newTaskDifficulty,
       skillCategory: newTaskSkill,
       description: newTaskDescription || undefined,
-      // Set status fields based on mode
-      ...(challengeType === 'coop' 
-        ? { status: 'pending' as const }
-        : { myStatus: 'pending' as const, opponentStatus: 'pending' as const }
-      )
+      // Initialize empty statusByUser - all participants start with 'pending' (absent = pending)
+      statusByUser: {}
     };
     setCategories((prev: ChallengeQuestCategory[]) => prev.map((cat: ChallengeQuestCategory) => 
       cat.id === categoryId ? { ...cat, tasks: [...cat.tasks, newTask] } : cat

@@ -15,10 +15,12 @@ import {
   ActionCodeSettings,
 } from 'firebase/auth';
 import { auth, useEmulators } from '../config/firebase';
+import { ensureUserDocument, FirestoreUserDocument } from '../services/firestoreUserService';
 
 // Types
 interface AuthContextType {
   user: User | null;
+  userDocument: FirestoreUserDocument | null;
   loading: boolean;
   error: string | null;
   isUsingEmulator: boolean;
@@ -56,18 +58,34 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [userDocument, setUserDocument] = useState<FirestoreUserDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Listen for auth state changes
+  // Listen for auth state changes and ensure Firestore user document exists
   useEffect(() => {
     if (!auth) {
       setLoading(false);
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      
+      if (firebaseUser) {
+        try {
+          // Ensure user document exists in Firestore (creates if new, updates lastLoginAt if existing)
+          const userDoc = await ensureUserDocument(firebaseUser);
+          setUserDocument(userDoc);
+        } catch (err) {
+          console.error('Failed to ensure user document:', err);
+          // Don't block auth if Firestore fails - user can still use the app
+        }
+      } else {
+        // User signed out
+        setUserDocument(null);
+      }
+      
       setLoading(false);
     });
 
@@ -111,12 +129,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const handleRedirectResult = async () => {
       try {
+        // This will resolve with the result of the redirect sign-in
         const result = await getRedirectResult(auth);
-        if (result) {
+        if (result && result.user) {
           // User successfully signed in via redirect
-          console.log('Redirect sign-in successful');
+          console.log('✅ Redirect sign-in successful:', result.user.email);
+          
+          // Ensure user document exists
+          try {
+            const userDoc = await ensureUserDocument(result.user);
+            setUserDocument(userDoc);
+          } catch (err) {
+            console.error('Failed to ensure user document after redirect:', err);
+          }
         }
       } catch (err: any) {
+        console.error('Redirect result error:', err);
         setError(err.message || 'Failed to complete sign-in');
       }
     };
@@ -135,16 +163,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setError(null);
       const provider = new GoogleAuthProvider();
       
-      // Use redirect for emulator (popup doesn't work reliably with emulator)
-      // Use popup for production (better UX)
-      if (useEmulators) {
-        await signInWithRedirect(auth, provider);
-      } else {
-        await signInWithPopup(auth, provider);
+      // Use popup for both emulator and production (better UX and works more reliably)
+      // The emulator will open its own auth page in the popup
+      const result = await signInWithPopup(auth, provider);
+      
+      if (result.user) {
+        console.log('✅ Google sign-in successful:', result.user.email);
+        // The onAuthStateChanged listener will handle the user document
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Google');
-      throw err;
+      // Handle popup blocked error
+      if (err.code === 'auth/popup-blocked') {
+        console.log('Popup blocked, trying redirect...');
+        const provider = new GoogleAuthProvider();
+        await signInWithRedirect(auth, provider);
+      } else {
+        setError(err.message || 'Failed to sign in with Google');
+        throw err;
+      }
     }
   };
 
@@ -270,6 +306,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const value: AuthContextType = {
     user,
+    userDocument,
     loading,
     error,
     isUsingEmulator: useEmulators,

@@ -1,9 +1,124 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
+    
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
+    
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is the owner of the resource
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Validate that a field is a valid difficulty enum
+    function isValidDifficulty(value) {
+      return value in ['Easy', 'Medium', 'Hard', 'Epic'];
+    }
+    
+    // Validate that a field is a valid skill category
+    function isValidSkillCategory(value) {
+      return value in ['Physical', 'Mental', 'Professional', 'Social', 'Creative', 'Default'];
+    }
+    
+    // ==========================================
+    // USERS COLLECTION
+    // ==========================================
+    match /users/{userId} {
+      // Allow authenticated users to read any user's public profile (for leaderboards, friend search)
+      allow read: if isAuthenticated();
+      
+      // Users can only write to their own document
+      allow write: if isOwner(userId);
+      
+      // Friends subcollection - only owner can read/write
+      match /friends/{friendId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Tasks subcollection - only owner can read/write
+      match /tasks/{taskId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Quests subcollection - only owner can read/write
+      match /quests/{questId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Oracle Chat subcollection - only owner can read/write
+      match /oracleChat/{messageId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Active Challenges subcollection - only owner can read/write
+      match /activeChallenges/{challengeId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // History subcollection - only owner can read/write
+      match /history/{date} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Archived History subcollection - only owner can read/write
+      match /archivedHistory/{archiveId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+    
+    // ==========================================
+    // FRIEND REQUESTS COLLECTION
+    // ==========================================
+    match /friendRequests/{requestId} {
+      // Allow reading requests where user is sender or recipient
+      allow read: if isAuthenticated() 
+                  && (resource.data.fromUID == request.auth.uid 
+                      || resource.data.toUID == request.auth.uid);
+      
+      // Allow listing/querying requests for the authenticated user
+      allow list: if isAuthenticated();
+      
+      // Sender can create requests (must set themselves as fromUID)
+      allow create: if isAuthenticated() 
+                    && request.resource.data.fromUID == request.auth.uid
+                    && request.resource.data.status == 'pending';
+      
+      // Recipient can update (accept/reject/block)
+      allow update: if isAuthenticated() 
+                    && resource.data.toUID == request.auth.uid
+                    && request.resource.data.status in ['accepted', 'rejected', 'blocked'];
+      
+      // Sender can delete (cancel their own request)
+      allow delete: if isAuthenticated() 
+                    && resource.data.fromUID == request.auth.uid;
+    }
+    
+    // ==========================================
+    // CHALLENGES COLLECTION
+    // ==========================================
+    match /challenges/{challengeId} {
+      // Creator can create a new challenge
+      allow create: if isAuthenticated() 
+                    && request.resource.data.creatorUID == request.auth.uid
+                    && request.auth.uid in request.resource.data.partnerIds;
+      
+      // Participants can read the challenge
+      allow read: if isAuthenticated() 
+                  && request.auth.uid in resource.data.partnerIds;
+      
+      // Participants can update the challenge (for task completion, etc.)
+      allow update: if isAuthenticated() 
+                    && request.auth.uid in resource.data.partnerIds;
+      
+      // Only creator can delete (cancel) the challenge
+      allow delete: if isAuthenticated() 
+                    && resource.data.creatorUID == request.auth.uid;
     }
   }
 }

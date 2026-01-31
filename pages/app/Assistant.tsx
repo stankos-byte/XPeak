@@ -162,15 +162,14 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                     const args = call.args as any;
                     const opponent = friends.find(f => f.name.toLowerCase().includes(args.opponentName.toLowerCase()));
                     if (opponent) {
-                        // Transform AI-generated categories to proper format with task IDs and status
+                        // Transform AI-generated categories to proper format with task IDs and statusByUser
                         const formattedCategories = (args.categories || []).map((cat: any, catIndex: number) => ({
                             id: `cat-${Date.now()}-${catIndex}`,
                             title: cat.title,
                             tasks: (cat.tasks || []).map((task: any, taskIndex: number) => ({
                                 task_id: `task-${Date.now()}-${catIndex}-${taskIndex}`,
                                 name: task.name,
-                                myStatus: 'pending' as const,
-                                opponentStatus: 'pending' as const,
+                                statusByUser: {}, // Empty = all pending
                                 difficulty: task.difficulty,
                                 skillCategory: task.skillCategory,
                                 description: task.description

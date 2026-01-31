@@ -73,6 +73,16 @@ export const useChallengeManager = (
     };
   }, []);
 
+  // Helper to get user's status for a task
+  const getUserTaskStatus = (task: ChallengeQuestTask, odId: string): 'completed' | 'pending' | 'in-progress' => {
+    return task.statusByUser[odId] || 'pending';
+  };
+
+  // Helper to check if user completed a task
+  const isTaskCompletedByUser = (task: ChallengeQuestTask, odId: string): boolean => {
+    return getUserTaskStatus(task, odId) === 'completed';
+  };
+
   const handleToggleChallengeTask = useCallback((
     challengeId: string, 
     categoryId: string, 
@@ -81,6 +91,9 @@ export const useChallengeManager = (
     setUser: React.Dispatch<React.SetStateAction<UserProfile>>,
     onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void
   ) => {
+    // TODO: Replace with actual user ID from auth context
+    const currentUserId = 'currentUser';
+    
     setChallenges((prev: FriendChallenge[]) => {
       const updated = prev.map((challenge: FriendChallenge) => {
       if (challenge.id !== challengeId) return challenge;
@@ -88,7 +101,7 @@ export const useChallengeManager = (
 
       const isCoop = challenge.mode === 'coop';
 
-      // Toggle the task status based on mode
+      // Toggle the task status using statusByUser map
       const updatedCategories = challenge.categories.map((cat: ChallengeQuestCategory) => {
         if (cat.id !== categoryId) return cat;
         return {
@@ -96,29 +109,31 @@ export const useChallengeManager = (
           tasks: cat.tasks.map((task: ChallengeQuestTask) => {
             if (task.task_id !== taskId) return task;
             
-            if (isCoop) {
-              // Co-op: toggle unified status and track who completed it
-              const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-              return { 
-                ...task, 
-                status: newStatus,
-                completedBy: newStatus === 'completed' ? user.name : undefined
-              } as ChallengeQuestTask;
-            } else {
-              // Competitive: toggle myStatus only
-              const newStatus = task.myStatus === 'completed' ? 'pending' : 'completed';
-              return { ...task, myStatus: newStatus } as ChallengeQuestTask;
-            }
+            const currentStatus = task.statusByUser[currentUserId] || 'pending';
+            const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+            
+            return { 
+              ...task, 
+              statusByUser: {
+                ...task.statusByUser,
+                [currentUserId]: newStatus
+              },
+              // For coop mode, track who completed it
+              completedBy: isCoop && newStatus === 'completed' ? user.name : 
+                          (isCoop && newStatus === 'pending' ? undefined : task.completedBy)
+            } as ChallengeQuestTask;
           })
         };
       });
 
       const updatedChallenge = { ...challenge, categories: updatedCategories };
 
-      // Check if all tasks are now completed
-      const allTasksCompleted = isCoop
-        ? updatedCategories.every((cat: ChallengeQuestCategory) => cat.tasks.every((task: ChallengeQuestTask) => task.status === 'completed'))
-        : updatedCategories.every((cat: ChallengeQuestCategory) => cat.tasks.every((task: ChallengeQuestTask) => task.myStatus === 'completed'));
+      // Check if all tasks are now completed by this user
+      const allTasksCompleted = updatedCategories.every((cat: ChallengeQuestCategory) => 
+        cat.tasks.every((task: ChallengeQuestTask) => 
+          task.statusByUser[currentUserId] === 'completed'
+        )
+      );
 
       // If all tasks completed, award XP and mark challenge as complete
       if (allTasksCompleted && !challenge.completedBy) {
@@ -131,7 +146,7 @@ export const useChallengeManager = (
           // Award skill XP only for tasks completed by this user
           updatedCategories.forEach((cat: ChallengeQuestCategory) => {
             cat.tasks.forEach((task: ChallengeQuestTask) => {
-              if (task.completedBy === user.name && task.status === 'completed') {
+              if (task.completedBy === user.name && task.statusByUser[currentUserId] === 'completed') {
                 const taskXP = calculateXP({ difficulty: task.difficulty } as any).total;
                 const skill = user.skills[task.skillCategory];
                 if (skill) {
@@ -160,7 +175,8 @@ export const useChallengeManager = (
         return {
           ...updatedChallenge,
           completedBy: user.name,
-          completedAt: new Date().toISOString()
+          completedAt: new Date().toISOString(),
+          status: 'completed' as const
         };
       }
 
@@ -174,6 +190,16 @@ export const useChallengeManager = (
   }, []);
 
   const handleCreateChallenge = useCallback((data: { title: string; description: string; partnerIds: string[]; categories: ChallengeQuestCategory[]; mode: ChallengeModeType }) => {
+    // TODO: Replace with actual user ID from auth context
+    const currentUserId = 'currentUser';
+    
+    // Helper to create expiration date (7 days from now)
+    const createExpiresAt = (): string => {
+      const date = new Date();
+      date.setDate(date.getDate() + 7);
+      return date.toISOString();
+    };
+    
     if (editingChallenge) {
       // Update existing challenge
       setChallenges((prev: FriendChallenge[]) => {
@@ -190,15 +216,18 @@ export const useChallengeManager = (
       });
       setEditingChallenge(null);
     } else {
-      // Create new challenge
+      // Create new challenge with proper structure
       const newChallenge: FriendChallenge = {
         id: crypto.randomUUID(),
         title: data.title,
         description: data.description || '',
-        partnerIds: data.partnerIds,
+        creatorUID: currentUserId,
+        partnerIds: [currentUserId, ...data.partnerIds],
         mode: data.mode || 'competitive',
+        status: 'active',
         categories: data.categories || [],
-        timeLeft: '7d' // Default duration
+        expiresAt: createExpiresAt(),
+        createdAt: new Date().toISOString()
       };
       setChallenges((prev: FriendChallenge[]) => {
         const updated = [...prev, newChallenge];
@@ -222,16 +251,30 @@ export const useChallengeManager = (
   }, []);
 
   const handleAiCreateChallenge = useCallback((challenge: Partial<FriendChallenge>) => {
+    // TODO: Replace with actual user ID from auth context
+    const currentUserId = 'currentUser';
+    
+    // Helper to create expiration date (7 days from now)
+    const createExpiresAt = (): string => {
+      const date = new Date();
+      date.setDate(date.getDate() + 7);
+      return date.toISOString();
+    };
+    
     setChallenges((prev: FriendChallenge[]) => {
-      const updated = [...prev, {
+      const newChallenge: FriendChallenge = {
         id: crypto.randomUUID(),
         title: challenge.title || 'New Challenge',
         description: challenge.description || 'Defeat your opponent.',
-        partnerIds: challenge.partnerIds || ['1'],
+        creatorUID: currentUserId,
+        partnerIds: challenge.partnerIds || [currentUserId, '1'],
         mode: challenge.mode || 'competitive',
+        status: 'active',
         categories: challenge.categories || [],
-        timeLeft: '7d'
-      }];
+        expiresAt: challenge.expiresAt || createExpiresAt(),
+        createdAt: new Date().toISOString()
+      };
+      const updated = [...prev, newChallenge];
       socialService.updateContracts(updated);
       return updated;
     });
