@@ -142,6 +142,18 @@ const Login = () => {
 
   const displayError = localError || error;
 
+  // Show loading while auth is initializing (e.g., processing redirect)
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#1a1625]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-[#3b82f6]/30 border-t-[#3b82f6] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   // Show success message if magic link was sent
   if (magicLinkSent) {
     return (

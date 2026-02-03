@@ -61,8 +61,48 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [userDocument, setUserDocument] = useState<FirestoreUserDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [redirectChecked, setRedirectChecked] = useState(false);
+
+  // Handle redirect result FIRST (for emulator Google sign-in)
+  // This must complete before we allow the auth state to settle
+  useEffect(() => {
+    if (!auth) {
+      setRedirectChecked(true);
+      return;
+    }
+
+    const handleRedirectResult = async () => {
+      try {
+        // This will resolve with the result of the redirect sign-in
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          // User successfully signed in via redirect
+          console.log('✅ Redirect sign-in successful:', result.user.email);
+          
+          // Set user immediately from redirect result
+          setUser(result.user);
+          
+          // Ensure user document exists
+          try {
+            const userDoc = await ensureUserDocument(result.user);
+            setUserDocument(userDoc);
+          } catch (err) {
+            console.error('Failed to ensure user document after redirect:', err);
+          }
+        }
+      } catch (err: any) {
+        console.error('Redirect result error:', err);
+        setError(err.message || 'Failed to complete sign-in');
+      } finally {
+        setRedirectChecked(true);
+      }
+    };
+
+    handleRedirectResult();
+  }, []);
 
   // Listen for auth state changes and ensure Firestore user document exists
+  // Only set loading to false after redirect has been checked
   useEffect(() => {
     if (!auth) {
       setLoading(false);
@@ -70,6 +110,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      // Update user state
       setUser(firebaseUser);
       
       if (firebaseUser) {
@@ -86,11 +127,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUserDocument(null);
       }
       
-      setLoading(false);
+      // Only set loading to false if redirect has been checked
+      // This prevents a race condition where auth fires with null before redirect completes
+      if (redirectChecked) {
+        setLoading(false);
+      }
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [redirectChecked]);
+
+  // Set loading to false once redirect is checked (even if no user from redirect)
+  useEffect(() => {
+    if (redirectChecked && loading) {
+      // Give a small delay for onAuthStateChanged to fire with the redirect user
+      const timeout = setTimeout(() => {
+        setLoading(false);
+      }, 100);
+      return () => clearTimeout(timeout);
+    }
+  }, [redirectChecked, loading]);
 
   // Check for magic link sign-in on mount
   useEffect(() => {
@@ -123,35 +179,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkMagicLink();
   }, []);
 
-  // Handle redirect result (for emulator Google sign-in)
-  useEffect(() => {
-    if (!auth) return;
-
-    const handleRedirectResult = async () => {
-      try {
-        // This will resolve with the result of the redirect sign-in
-        const result = await getRedirectResult(auth);
-        if (result && result.user) {
-          // User successfully signed in via redirect
-          console.log('✅ Redirect sign-in successful:', result.user.email);
-          
-          // Ensure user document exists
-          try {
-            const userDoc = await ensureUserDocument(result.user);
-            setUserDocument(userDoc);
-          } catch (err) {
-            console.error('Failed to ensure user document after redirect:', err);
-          }
-        }
-      } catch (err: any) {
-        console.error('Redirect result error:', err);
-        setError(err.message || 'Failed to complete sign-in');
-      }
-    };
-
-    handleRedirectResult();
-  }, []);
-
   // Sign in with Google
   const signInWithGoogle = async () => {
     if (!auth) {
@@ -161,10 +188,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       setError(null);
-      const provider = new GoogleAuthProvider();
       
-      // Use popup for both emulator and production (better UX and works more reliably)
-      // The emulator will open its own auth page in the popup
+      // In emulator mode, create a mock Google user directly
+      // The emulator doesn't support real OAuth flows (popup/redirect both fail)
+      if (useEmulators) {
+        console.log('🔧 Creating mock Google user (emulator mode)');
+        const mockEmail = 'google.user@example.com';
+        const mockPassword = 'google-mock-password-123';
+        
+        try {
+          // Try to sign in first (in case user already exists)
+          await signInWithEmailAndPassword(auth, mockEmail, mockPassword);
+          console.log('✅ Mock Google sign-in successful:', mockEmail);
+        } catch (signInErr: any) {
+          // If sign in fails, create the account
+          if (signInErr.code === 'auth/user-not-found' || signInErr.code === 'auth/invalid-credential') {
+            await createUserWithEmailAndPassword(auth, mockEmail, mockPassword);
+            console.log('✅ Mock Google account created:', mockEmail);
+          } else {
+            throw signInErr;
+          }
+        }
+        return;
+      }
+      
+      // Production: use popup for better UX
+      const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
       
       if (result.user) {
@@ -172,7 +221,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // The onAuthStateChanged listener will handle the user document
       }
     } catch (err: any) {
-      // Handle popup blocked error
+      // Handle popup blocked error (production fallback)
       if (err.code === 'auth/popup-blocked') {
         console.log('Popup blocked, trying redirect...');
         const provider = new GoogleAuthProvider();
