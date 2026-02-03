@@ -37,8 +37,8 @@ Write-Host "Looking for Git..." -ForegroundColor Yellow
 $gitExe = Find-Git
 Write-Host "Found Git at: $gitExe" -ForegroundColor Green
 
-# Change to repository directory
-$repoPath = "C:\Users\stank\Downloads\levelup-life (4)"
+# Change to repository directory (use script's directory)
+$repoPath = $PSScriptRoot
 Set-Location $repoPath
 
 # Verify remote is set correctly

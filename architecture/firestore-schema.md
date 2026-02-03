@@ -546,6 +546,7 @@ Daily tasks and recurring habits.
 | `streak` | `number` | Yes | Current streak count (habits only) |
 | `lastCompletedDate` | `timestamp \| null` | No | When last completed |
 | `createdAt` | `timestamp` | Yes | Task creation date |
+| `tags` | `string[]` | No | Optional tags for flexible filtering (array-contains queries) |
 
 #### Example Document
 
@@ -560,7 +561,8 @@ Daily tasks and recurring habits.
   "completed": false,
   "streak": 7,
   "lastCompletedDate": "2026-01-20T07:30:00Z",
-  "createdAt": "2026-01-01T10:00:00Z"
+  "createdAt": "2026-01-01T10:00:00Z",
+  "tags": ["morning", "health", "priority"]
 }
 ```
 
@@ -581,6 +583,10 @@ Main quests (large projects) with nested categories and tasks.
 | `categories` | `QuestCategory[]` | Yes | Quest breakdown |
 | `createdAt` | `timestamp` | Yes | Quest creation date |
 | `completedAt` | `timestamp \| null` | No | When quest was completed |
+| `totalTasks` | `number` | No | Computed index: total tasks count |
+| `completedTasks` | `number` | No | Computed index: completed tasks count |
+| `skillCategories` | `SkillCategory[]` | No | Computed index: unique skills (for array-contains queries) |
+| `isComplete` | `boolean` | No | Computed index: true when all tasks done |
 
 #### Embedded Types
 
@@ -648,9 +654,15 @@ interface QuestTask {
     }
   ],
   "createdAt": "2026-01-15T10:00:00Z",
-  "completedAt": null
+  "completedAt": null,
+  "totalTasks": 3,
+  "completedTasks": 1,
+  "skillCategories": ["Professional"],
+  "isComplete": false
 }
 ```
+
+> **Note**: The index fields (`totalTasks`, `completedTasks`, `skillCategories`, `isComplete`) are automatically computed when saving a quest. Use `computeQuestIndexes()` utility function to calculate these fields.
 
 ---
 
@@ -1003,5 +1015,84 @@ When migrating from localStorage to Firestore:
 
 ---
 
-*Last Updated: January 2026*
-*Schema Version: 1.0.0*
+## Centralized Path Service
+
+All Firestore paths are managed through a centralized path service (`services/firebasePaths.ts`) for consistency and maintainability.
+
+### Usage Examples
+
+```typescript
+import { fbPaths, paths } from './services/firebasePaths';
+
+// Get DocumentReference objects (for Firestore operations)
+const userRef = fbPaths.userDoc(uid);
+const taskRef = fbPaths.taskDoc(uid, taskId);
+const questRef = fbPaths.questDoc(uid, questId);
+const historyRef = fbPaths.historyDoc(uid, '2026-01-21');
+
+// Get CollectionReference objects
+const tasksCollection = fbPaths.tasksCollection(uid);
+const questsCollection = fbPaths.questsCollection(uid);
+
+// Get path strings (for logging/debugging)
+console.log(paths.userTask(uid, taskId)); // "users/{uid}/tasks/{taskId}"
+```
+
+### Available Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `userDoc(uid)` | `DocumentReference` | User document |
+| `tasksCollection(uid)` | `CollectionReference` | User's tasks collection |
+| `taskDoc(uid, taskId)` | `DocumentReference` | Specific task document |
+| `questsCollection(uid)` | `CollectionReference` | User's quests collection |
+| `questDoc(uid, questId)` | `DocumentReference` | Specific quest document |
+| `historyCollection(uid)` | `CollectionReference` | User's history collection |
+| `historyDoc(uid, date)` | `DocumentReference` | Specific history entry |
+| `oracleChatCollection(uid)` | `CollectionReference` | User's chat collection |
+| `friendsCollection(uid)` | `CollectionReference` | User's friends collection |
+| `challengeDoc(challengeId)` | `DocumentReference` | Challenge document |
+| `friendRequestDoc(requestId)` | `DocumentReference` | Friend request document |
+
+---
+
+## Array Query Patterns
+
+### Querying Tasks by Tag
+
+```typescript
+import { query, where, getDocs } from 'firebase/firestore';
+import { fbPaths } from './services/firebasePaths';
+
+// Find all tasks with a specific tag
+const tasksRef = fbPaths.tasksCollection(uid);
+const q = query(tasksRef, where('tags', 'array-contains', 'priority'));
+const snapshot = await getDocs(q);
+```
+
+### Querying Quests by Skill Category
+
+```typescript
+// Find all quests that include Physical tasks
+const questsRef = fbPaths.questsCollection(uid);
+const q = query(questsRef, where('skillCategories', 'array-contains', 'Physical'));
+const snapshot = await getDocs(q);
+```
+
+### Querying Challenges by Participant
+
+```typescript
+// Find all active challenges for a user
+const challengesRef = fbPaths.challengesCollection();
+const q = query(
+  challengesRef, 
+  where('partnerIds', 'array-contains', currentUserId),
+  where('status', '==', 'active')
+);
+const snapshot = await getDocs(q);
+```
+
+---
+
+*Last Updated: February 2026*
+*Schema Version: 2.0.0*

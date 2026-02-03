@@ -36,7 +36,7 @@ This will open a browser window for authentication.
 
 ```bash
 # Navigate to your project root
-cd /path/to/levelup-life
+cd /path/to/xpeak
 
 # Initialize Firebase (if not already done)
 firebase init

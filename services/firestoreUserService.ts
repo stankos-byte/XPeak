@@ -16,6 +16,7 @@ import {
 import { User } from 'firebase/auth';
 import { db } from '../config/firebase';
 import { SkillCategory, ProfileLayout, Goal, TaskTemplate } from '../types';
+import { fbPaths, COLLECTIONS } from './firebasePaths';
 
 // Auth provider types
 type AuthProvider = 'google' | 'email' | 'apple';
@@ -115,7 +116,7 @@ const getAuthProvider = (user: User): AuthProvider => {
  * IMPORTANT: Uses doc() with user.uid to create a document with a specific ID.
  * This ensures the document ID matches the Firebase Auth UID, making it:
  * - Unique per user (Firebase Auth UIDs are globally unique)
- * - Easy to look up (no need to query, just use doc(db, 'users', uid))
+ * - Easy to look up (no need to query, just use fbPaths.userDoc(uid))
  * - Consistent with security rules (request.auth.uid == userId)
  */
 const createUserDocument = async (user: User): Promise<FirestoreUserDocument> => {
@@ -123,9 +124,8 @@ const createUserDocument = async (user: User): Promise<FirestoreUserDocument> =>
     throw new Error('Firestore is not initialized');
   }
 
-  // doc() with 3 args creates a reference to a specific document ID (user.uid)
-  // This is different from addDoc() which would auto-generate a random ID
-  const userRef = doc(db, 'users', user.uid);
+  // Uses centralized path service for consistent path management
+  const userRef = fbPaths.userDoc(user.uid);
   
   const newUserData: FirestoreUserDocument = {
     uid: user.uid,
@@ -160,7 +160,7 @@ const updateLastLogin = async (uid: string): Promise<void> => {
     throw new Error('Firestore is not initialized');
   }
 
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     lastLoginAt: serverTimestamp(),
     updatedAt: serverTimestamp()
@@ -177,7 +177,7 @@ export const getUserDocument = async (uid: string): Promise<FirestoreUserDocumen
     return null;
   }
 
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   const userSnap = await getDoc(userRef);
   
   if (userSnap.exists()) {

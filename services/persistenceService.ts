@@ -4,64 +4,46 @@
  * This service debounces writes to prevent excessive storage operations.
  * Currently uses localStorage, but can be easily swapped to Firebase or other backends.
  * 
+ * Keys are scoped by user ID to prevent data leakage between users on same browser.
+ * 
  * Usage:
  *   const persistence = new PersistenceService(localStorageAdapter);
- *   persistence.set('key', value); // Debounced - waits 1000ms after last change
- *   const value = persistence.get('key', defaultValue);
+ *   persistence.set('key', value, uid); // Debounced - waits 1000ms after last change
+ *   const value = persistence.get('key', defaultValue, uid);
  */
 
 import { DEBUG_FLAGS } from '../config/debugFlags';
+import { storage } from './localStorage';
 
 export interface StorageAdapter {
   /**
    * Get a value from storage
-   * @param key The storage key
+   * @param key The storage key (will be scoped by uid)
    * @param defaultValue Value to return if key doesn't exist
+   * @param uid Optional user ID for scoping
    */
-  get<T>(key: string, defaultValue: T): T;
+  get<T>(key: string, defaultValue: T, uid?: string | null): T;
 
   /**
    * Set a value in storage (synchronous)
-   * @param key The storage key
+   * @param key The storage key (will be scoped by uid)
    * @param value The value to store
+   * @param uid Optional user ID for scoping
    * @returns true if successful, false otherwise
    */
-  set<T>(key: string, value: T): boolean | Promise<boolean>;
+  set<T>(key: string, value: T, uid?: string | null): boolean | Promise<boolean>;
 }
 
 /**
- * localStorage adapter implementation
+ * localStorage adapter implementation using the storage service for consistent key scoping
  */
 export class LocalStorageAdapter implements StorageAdapter {
-  get<T>(key: string, defaultValue: T): T {
-    try {
-      const item = localStorage.getItem(key);
-      if (item === null) return defaultValue;
-      return JSON.parse(item) as T;
-    } catch (error) {
-      if (DEBUG_FLAGS.storage) console.error(`Error reading "${key}" from localStorage:`, error);
-      return defaultValue;
-    }
+  get<T>(key: string, defaultValue: T, uid?: string | null): T {
+    return storage.get(key, defaultValue, uid);
   }
 
-  set<T>(key: string, value: T): boolean {
-    try {
-      const serialized = JSON.stringify(value);
-      localStorage.setItem(key, serialized);
-      return true;
-    } catch (error) {
-      if (DEBUG_FLAGS.storage) console.error(`Error writing "${key}" to localStorage:`, error);
-      
-      // Check if quota exceeded
-      if (error instanceof DOMException && (
-        error.name === 'QuotaExceededError' ||
-        error.name === 'NS_ERROR_DOM_QUOTA_REACHED'
-      )) {
-        if (DEBUG_FLAGS.storage) console.warn('localStorage quota exceeded. Consider cleaning up old data.');
-      }
-      
-      return false;
-    }
+  set<T>(key: string, value: T, uid?: string | null): boolean {
+    return storage.set(key, value, uid);
   }
 }
 
@@ -70,12 +52,13 @@ export class LocalStorageAdapter implements StorageAdapter {
  * 
  * Waits 1000ms after the last change before writing to storage.
  * This prevents excessive writes during rapid state changes.
+ * Keys are scoped by user ID for data isolation.
  */
 export class PersistenceService {
   private adapter: StorageAdapter;
   private debounceDelay: number;
   private pendingWrites: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private pendingValues: Map<string, any> = new Map();
+  private pendingValues: Map<string, { value: any; uid?: string | null }> = new Map();
 
   constructor(adapter: StorageAdapter, debounceDelay: number = 1000) {
     this.adapter = adapter;
@@ -84,52 +67,64 @@ export class PersistenceService {
 
   /**
    * Get a value from storage (synchronous, no debouncing)
+   * @param key Base storage key
+   * @param defaultValue Default value if not found
+   * @param uid Optional user ID for scoping
    */
-  get<T>(key: string, defaultValue: T): T {
-    return this.adapter.get(key, defaultValue);
+  get<T>(key: string, defaultValue: T, uid?: string | null): T {
+    return this.adapter.get(key, defaultValue, uid);
   }
 
   /**
    * Set a value in storage (debounced)
    * The write will be delayed by debounceDelay ms after the last call.
+   * @param key Base storage key
+   * @param value Value to store
+   * @param uid Optional user ID for scoping
    */
-  set<T>(key: string, value: T): void {
-    // Store the latest value
-    this.pendingValues.set(key, value);
+  set<T>(key: string, value: T, uid?: string | null): void {
+    // Create a composite key for the pending map that includes uid
+    const pendingKey = uid ? `${key}_${uid}` : key;
+    
+    // Store the latest value with uid
+    this.pendingValues.set(pendingKey, { value, uid });
 
     // Clear existing timeout for this key
-    const existingTimeout = this.pendingWrites.get(key);
+    const existingTimeout = this.pendingWrites.get(pendingKey);
     if (existingTimeout) {
       clearTimeout(existingTimeout);
     }
 
     // Set new timeout
     const timeout = setTimeout(() => {
-      this.flushKey(key);
+      this.flushKey(pendingKey);
     }, this.debounceDelay);
 
-    this.pendingWrites.set(key, timeout);
+    this.pendingWrites.set(pendingKey, timeout);
   }
 
   /**
-   * Immediately flush a specific key to storage
+   * Immediately flush a specific pending key to storage
    */
-  flushKey(key: string): void {
-    const value = this.pendingValues.get(key);
-    if (value === undefined) return;
+  flushKey(pendingKey: string): void {
+    const pending = this.pendingValues.get(pendingKey);
+    if (pending === undefined) return;
 
-    const result = this.adapter.set(key, value);
+    // Extract the base key from pendingKey (remove uid suffix if present)
+    const baseKey = pending.uid ? pendingKey.replace(`_${pending.uid}`, '') : pendingKey;
+    
+    const result = this.adapter.set(baseKey, pending.value, pending.uid);
     
     // Handle promise result if adapter returns Promise
     if (result instanceof Promise) {
       result.catch((error) => {
-        if (DEBUG_FLAGS.storage) console.error(`Error flushing "${key}" to storage:`, error);
+        if (DEBUG_FLAGS.storage) console.error(`Error flushing "${baseKey}" to storage:`, error);
       });
     }
 
     // Clean up
-    this.pendingValues.delete(key);
-    this.pendingWrites.delete(key);
+    this.pendingValues.delete(pendingKey);
+    this.pendingWrites.delete(pendingKey);
   }
 
   /**
@@ -148,25 +143,22 @@ export class PersistenceService {
 
   /**
    * Remove a key from storage (immediate, no debouncing)
+   * @param key Base storage key
+   * @param uid Optional user ID for scoping
    */
-  remove(key: string): void {
+  remove(key: string, uid?: string | null): void {
+    const pendingKey = uid ? `${key}_${uid}` : key;
+    
     // Cancel any pending write for this key
-    const timeout = this.pendingWrites.get(key);
+    const timeout = this.pendingWrites.get(pendingKey);
     if (timeout) {
       clearTimeout(timeout);
-      this.pendingWrites.delete(key);
+      this.pendingWrites.delete(pendingKey);
     }
-    this.pendingValues.delete(key);
+    this.pendingValues.delete(pendingKey);
 
-    // For localStorage, we can use the existing storage service
-    // For other adapters, we'd need to add a remove method to the interface
-    if (this.adapter instanceof LocalStorageAdapter) {
-      try {
-        localStorage.removeItem(key);
-      } catch (error) {
-        if (DEBUG_FLAGS.storage) console.error(`Error removing "${key}" from storage:`, error);
-      }
-    }
+    // Use the storage service for removal (handles scoping)
+    storage.remove(key, uid);
   }
 
   /**

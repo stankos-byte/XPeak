@@ -62,15 +62,15 @@ export const useTaskManager = (
           const firestoreTasks = await getTasks(user.uid);
           setTasks(firestoreTasks); // Use Firestore data even if empty
         } else {
-          // Not authenticated: use localStorage
-          const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, []);
+          // Not authenticated: use localStorage (scoped by anonymous session)
+          const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, [], null);
           setTasks(localTasks);
         }
         initialLoadCompleteRef.current = true;
       } catch (error) {
         console.error('Failed to load tasks:', error);
-        // On error, fall back to localStorage
-        const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, []);
+        // On error, fall back to localStorage (scoped by anonymous session)
+        const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, [], null);
         setTasks(localTasks);
         initialLoadCompleteRef.current = true;
       } finally {
@@ -91,8 +91,8 @@ export const useTaskManager = (
       // Debounced save to Firestore - we handle individual saves in handlers
       // This is a fallback for bulk state changes
     } else {
-      // Save to localStorage when not authenticated
-      persistenceService.set(STORAGE_KEYS.TASKS, tasks);
+      // Save to localStorage when not authenticated (scoped by anonymous session)
+      persistenceService.set(STORAGE_KEYS.TASKS, tasks, null);
     }
   }, [tasks, user]);
 

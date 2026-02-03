@@ -21,6 +21,7 @@ import {
   query,
   orderBy,
   limit,
+  where,
   serverTimestamp,
   Timestamp,
   onSnapshot,
@@ -35,9 +36,11 @@ import {
   Goal, 
   TaskTemplate, 
   ProfileLayout,
-  ChatMessage 
+  ChatMessage,
+  computeQuestIndexes
 } from '../types';
 import { FirestoreSkillData } from './firestoreUserService';
+import { fbPaths, paths } from './firebasePaths';
 
 // ============================================
 // Types
@@ -54,6 +57,8 @@ export interface FirestoreTask {
   streak: number;
   lastCompletedDate: Timestamp | null;
   createdAt: Timestamp;
+  /** Optional tags for flexible filtering */
+  tags?: string[];
 }
 
 export interface FirestoreQuest {
@@ -62,6 +67,14 @@ export interface FirestoreQuest {
   categories: MainQuest['categories'];
   createdAt: Timestamp;
   completedAt: Timestamp | null;
+  /** Computed index: total number of tasks */
+  totalTasks?: number;
+  /** Computed index: number of completed tasks */
+  completedTasks?: number;
+  /** Computed index: unique skill categories (for array-contains queries) */
+  skillCategories?: string[];
+  /** Computed index: true when all tasks complete */
+  isComplete?: boolean;
 }
 
 export interface FirestoreHistory {
@@ -97,6 +110,7 @@ function taskToFirestore(task: Task): FirestoreTask {
       ? Timestamp.fromDate(new Date(task.lastCompletedDate)) 
       : null,
     createdAt: Timestamp.fromDate(new Date(task.createdAt)),
+    tags: task.tags || [],
   };
 }
 
@@ -112,16 +126,25 @@ function taskFromFirestore(data: FirestoreTask): Task {
     streak: data.streak,
     lastCompletedDate: data.lastCompletedDate?.toDate().toISOString() || null,
     createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+    tags: data.tags || [],
   };
 }
 
 function questToFirestore(quest: MainQuest): FirestoreQuest {
+  // Compute index fields for efficient queries
+  const indexed = computeQuestIndexes(quest);
+  
   return {
     id: quest.id,
     title: quest.title,
     categories: quest.categories,
     createdAt: serverTimestamp() as Timestamp,
-    completedAt: null,
+    completedAt: indexed.isComplete ? serverTimestamp() as Timestamp : null,
+    // Index fields for queries
+    totalTasks: indexed.totalTasks,
+    completedTasks: indexed.completedTasks,
+    skillCategories: indexed.skillCategories,
+    isComplete: indexed.isComplete,
   };
 }
 
@@ -130,6 +153,11 @@ function questFromFirestore(data: FirestoreQuest): MainQuest {
     id: data.id,
     title: data.title,
     categories: data.categories || [],
+    // Include index fields if present
+    totalTasks: data.totalTasks,
+    completedTasks: data.completedTasks,
+    skillCategories: data.skillCategories as SkillCategory[] | undefined,
+    isComplete: data.isComplete,
   };
 }
 
@@ -143,7 +171,7 @@ function questFromFirestore(data: FirestoreQuest): MainQuest {
 export async function getTasks(uid: string): Promise<Task[]> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const tasksRef = collection(db, 'users', uid, 'tasks');
+  const tasksRef = fbPaths.tasksCollection(uid);
   const q = query(tasksRef, orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   
@@ -159,7 +187,7 @@ export function subscribeTasks(
 ): Unsubscribe {
   if (!db) throw new Error('Firestore not initialized');
   
-  const tasksRef = collection(db, 'users', uid, 'tasks');
+  const tasksRef = fbPaths.tasksCollection(uid);
   const q = query(tasksRef, orderBy('createdAt', 'desc'));
   
   return onSnapshot(q, (snapshot) => {
@@ -174,7 +202,7 @@ export function subscribeTasks(
 export async function saveTask(uid: string, task: Task): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const taskRef = doc(db, 'users', uid, 'tasks', task.id);
+  const taskRef = fbPaths.taskDoc(uid, task.id);
   await setDoc(taskRef, taskToFirestore(task));
 }
 
@@ -187,7 +215,7 @@ export async function saveTasks(uid: string, tasks: Task[]): Promise<void> {
   const batch = writeBatch(db);
   
   tasks.forEach(task => {
-    const taskRef = doc(db, 'users', uid, 'tasks', task.id);
+    const taskRef = fbPaths.taskDoc(uid, task.id);
     batch.set(taskRef, taskToFirestore(task));
   });
   
@@ -200,7 +228,7 @@ export async function saveTasks(uid: string, tasks: Task[]): Promise<void> {
 export async function deleteTask(uid: string, taskId: string): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const taskRef = doc(db, 'users', uid, 'tasks', taskId);
+  const taskRef = fbPaths.taskDoc(uid, taskId);
   await deleteDoc(taskRef);
 }
 
@@ -210,7 +238,7 @@ export async function deleteTask(uid: string, taskId: string): Promise<void> {
 export async function updateTask(uid: string, taskId: string, updates: Partial<Task>): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const taskRef = doc(db, 'users', uid, 'tasks', taskId);
+  const taskRef = fbPaths.taskDoc(uid, taskId);
   
   // Convert date fields to Timestamps
   const firestoreUpdates: Record<string, unknown> = { ...updates };
@@ -223,6 +251,19 @@ export async function updateTask(uid: string, taskId: string, updates: Partial<T
   await updateDoc(taskRef, firestoreUpdates);
 }
 
+/**
+ * Get tasks by tag (uses array-contains query)
+ */
+export async function getTasksByTag(uid: string, tag: string): Promise<Task[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const tasksRef = fbPaths.tasksCollection(uid);
+  const q = query(tasksRef, where('tags', 'array-contains', tag));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => taskFromFirestore(doc.data() as FirestoreTask));
+}
+
 // ============================================
 // Quests Operations
 // ============================================
@@ -233,7 +274,7 @@ export async function updateTask(uid: string, taskId: string, updates: Partial<T
 export async function getQuests(uid: string): Promise<MainQuest[]> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const questsRef = collection(db, 'users', uid, 'quests');
+  const questsRef = fbPaths.questsCollection(uid);
   const snapshot = await getDocs(questsRef);
   
   return snapshot.docs.map(doc => questFromFirestore(doc.data() as FirestoreQuest));
@@ -248,7 +289,7 @@ export function subscribeQuests(
 ): Unsubscribe {
   if (!db) throw new Error('Firestore not initialized');
   
-  const questsRef = collection(db, 'users', uid, 'quests');
+  const questsRef = fbPaths.questsCollection(uid);
   
   return onSnapshot(questsRef, (snapshot) => {
     const quests = snapshot.docs.map(doc => questFromFirestore(doc.data() as FirestoreQuest));
@@ -262,7 +303,7 @@ export function subscribeQuests(
 export async function saveQuest(uid: string, quest: MainQuest): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const questRef = doc(db, 'users', uid, 'quests', quest.id);
+  const questRef = fbPaths.questDoc(uid, quest.id);
   await setDoc(questRef, questToFirestore(quest));
 }
 
@@ -275,7 +316,7 @@ export async function saveQuests(uid: string, quests: MainQuest[]): Promise<void
   const batch = writeBatch(db);
   
   quests.forEach(quest => {
-    const questRef = doc(db, 'users', uid, 'quests', quest.id);
+    const questRef = fbPaths.questDoc(uid, quest.id);
     batch.set(questRef, questToFirestore(quest));
   });
   
@@ -288,7 +329,7 @@ export async function saveQuests(uid: string, quests: MainQuest[]): Promise<void
 export async function deleteQuest(uid: string, questId: string): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const questRef = doc(db, 'users', uid, 'quests', questId);
+  const questRef = fbPaths.questDoc(uid, questId);
   await deleteDoc(questRef);
 }
 
@@ -298,8 +339,52 @@ export async function deleteQuest(uid: string, questId: string): Promise<void> {
 export async function updateQuest(uid: string, questId: string, updates: Partial<MainQuest>): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const questRef = doc(db, 'users', uid, 'quests', questId);
-  await updateDoc(questRef, updates as Record<string, unknown>);
+  const questRef = fbPaths.questDoc(uid, questId);
+  
+  // If categories are being updated, recompute index fields
+  if (updates.categories) {
+    const indexed = computeQuestIndexes({ 
+      id: questId, 
+      title: '', 
+      categories: updates.categories 
+    });
+    const firestoreUpdates = {
+      ...updates,
+      totalTasks: indexed.totalTasks,
+      completedTasks: indexed.completedTasks,
+      skillCategories: indexed.skillCategories,
+      isComplete: indexed.isComplete,
+    };
+    await updateDoc(questRef, firestoreUpdates as Record<string, unknown>);
+  } else {
+    await updateDoc(questRef, updates as Record<string, unknown>);
+  }
+}
+
+/**
+ * Get quests by skill category (uses array-contains query)
+ */
+export async function getQuestsBySkillCategory(uid: string, skillCategory: SkillCategory): Promise<MainQuest[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const questsRef = fbPaths.questsCollection(uid);
+  const q = query(questsRef, where('skillCategories', 'array-contains', skillCategory));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => questFromFirestore(doc.data() as FirestoreQuest));
+}
+
+/**
+ * Get incomplete quests
+ */
+export async function getIncompleteQuests(uid: string): Promise<MainQuest[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const questsRef = fbPaths.questsCollection(uid);
+  const q = query(questsRef, where('isComplete', '==', false));
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => questFromFirestore(doc.data() as FirestoreQuest));
 }
 
 // ============================================
@@ -316,7 +401,7 @@ export async function updateUserXP(
 ): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     totalXP,
     level,
@@ -333,7 +418,7 @@ export async function updateUserSkills(
 ): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     skills,
     updatedAt: serverTimestamp(),
@@ -346,7 +431,7 @@ export async function updateUserSkills(
 export async function updateUserIdentity(uid: string, identity: string): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     identity,
     updatedAt: serverTimestamp(),
@@ -359,7 +444,7 @@ export async function updateUserIdentity(uid: string, identity: string): Promise
 export async function updateUserGoals(uid: string, goals: Goal[]): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     goals,
     updatedAt: serverTimestamp(),
@@ -372,7 +457,7 @@ export async function updateUserGoals(uid: string, goals: Goal[]): Promise<void>
 export async function updateUserTemplates(uid: string, templates: TaskTemplate[]): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     templates,
     updatedAt: serverTimestamp(),
@@ -385,7 +470,7 @@ export async function updateUserTemplates(uid: string, templates: TaskTemplate[]
 export async function updateUserLayout(uid: string, layout: ProfileLayout): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     layout,
     updatedAt: serverTimestamp(),
@@ -410,7 +495,7 @@ export async function updateUserProfile(
 ): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   await updateDoc(userRef, {
     ...updates,
     updatedAt: serverTimestamp(),
@@ -427,7 +512,7 @@ export async function updateUserProfile(
 export async function getHistory(uid: string, limitCount = 365): Promise<DailyActivity[]> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const historyRef = collection(db, 'users', uid, 'history');
+  const historyRef = fbPaths.historyCollection(uid);
   const q = query(historyRef, orderBy('date', 'desc'), limit(limitCount));
   const snapshot = await getDocs(q);
   
@@ -440,7 +525,7 @@ export async function getHistory(uid: string, limitCount = 365): Promise<DailyAc
 export async function saveHistoryEntry(uid: string, entry: DailyActivity): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const historyRef = doc(db, 'users', uid, 'history', entry.date);
+  const historyRef = fbPaths.historyDoc(uid, entry.date);
   await setDoc(historyRef, entry, { merge: true });
 }
 
@@ -453,7 +538,7 @@ export async function saveHistory(uid: string, entries: DailyActivity[]): Promis
   const batch = writeBatch(db);
   
   entries.forEach(entry => {
-    const historyRef = doc(db, 'users', uid, 'history', entry.date);
+    const historyRef = fbPaths.historyDoc(uid, entry.date);
     batch.set(historyRef, entry, { merge: true });
   });
   
@@ -470,7 +555,7 @@ export async function saveHistory(uid: string, entries: DailyActivity[]): Promis
 export async function getChatMessages(uid: string, limitCount = 100): Promise<ChatMessage[]> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const chatRef = collection(db, 'users', uid, 'oracleChat');
+  const chatRef = fbPaths.oracleChatCollection(uid);
   const q = query(chatRef, orderBy('createdAt', 'asc'), limit(limitCount));
   const snapshot = await getDocs(q);
   
@@ -491,7 +576,7 @@ export async function getChatMessages(uid: string, limitCount = 100): Promise<Ch
 export async function saveChatMessage(uid: string, message: ChatMessage): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const messageRef = doc(db, 'users', uid, 'oracleChat', message.id);
+  const messageRef = fbPaths.oracleChatDoc(uid, message.id);
   await setDoc(messageRef, {
     ...message,
     createdAt: serverTimestamp(),
@@ -507,7 +592,7 @@ export async function saveChatMessages(uid: string, messages: ChatMessage[]): Pr
   const batch = writeBatch(db);
   
   messages.forEach(message => {
-    const messageRef = doc(db, 'users', uid, 'oracleChat', message.id);
+    const messageRef = fbPaths.oracleChatDoc(uid, message.id);
     batch.set(messageRef, {
       ...message,
       createdAt: serverTimestamp(),
@@ -523,7 +608,7 @@ export async function saveChatMessages(uid: string, messages: ChatMessage[]): Pr
 export async function clearChatMessages(uid: string): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
   
-  const chatRef = collection(db, 'users', uid, 'oracleChat');
+  const chatRef = fbPaths.oracleChatCollection(uid);
   const snapshot = await getDocs(chatRef);
   
   const batch = writeBatch(db);
@@ -551,7 +636,7 @@ export async function resetUserData(uid: string): Promise<void> {
   console.log('🔄 Resetting user data to defaults...');
   
   // Reset user profile to defaults
-  const userRef = doc(db, 'users', uid);
+  const userRef = fbPaths.userDoc(uid);
   const defaultSkills: Record<string, { xp: number; level: number }> = {};
   const skillCategories = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA', 'MISC'];
   skillCategories.forEach(cat => {
@@ -580,7 +665,7 @@ export async function resetUserData(uid: string): Promise<void> {
   console.log('✅ Reset user profile');
   
   // Delete all tasks
-  const tasksRef = collection(db, 'users', uid, 'tasks');
+  const tasksRef = fbPaths.tasksCollection(uid);
   const tasksSnapshot = await getDocs(tasksRef);
   if (tasksSnapshot.size > 0) {
     const tasksBatch = writeBatch(db);
@@ -590,7 +675,7 @@ export async function resetUserData(uid: string): Promise<void> {
   }
   
   // Delete all quests
-  const questsRef = collection(db, 'users', uid, 'quests');
+  const questsRef = fbPaths.questsCollection(uid);
   const questsSnapshot = await getDocs(questsRef);
   if (questsSnapshot.size > 0) {
     const questsBatch = writeBatch(db);
@@ -600,7 +685,7 @@ export async function resetUserData(uid: string): Promise<void> {
   }
   
   // Delete all history
-  const historyRef = collection(db, 'users', uid, 'history');
+  const historyRef = fbPaths.historyCollection(uid);
   const historySnapshot = await getDocs(historyRef);
   if (historySnapshot.size > 0) {
     const historyBatch = writeBatch(db);
@@ -610,7 +695,7 @@ export async function resetUserData(uid: string): Promise<void> {
   }
   
   // Delete all chat messages
-  const chatRef = collection(db, 'users', uid, 'oracleChat');
+  const chatRef = fbPaths.oracleChatCollection(uid);
   const chatSnapshot = await getDocs(chatRef);
   if (chatSnapshot.size > 0) {
     const chatBatch = writeBatch(db);
@@ -690,7 +775,7 @@ export async function migrateLocalStorageToFirestore(
     
     if (Object.keys(updates).length > 0) {
       updates.updatedAt = serverTimestamp();
-      const userRef = doc(db, 'users', uid);
+      const userRef = fbPaths.userDoc(uid);
       await updateDoc(userRef, updates);
       console.log('✅ Migrated user profile data');
     }

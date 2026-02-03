@@ -265,6 +265,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setError(null);
       await firebaseSignOut(auth);
+      // Reset anonymous session so next anonymous user gets fresh data
+      // Import is at the top of this file
+      const { storage } = await import('../services/localStorage');
+      storage.resetAnonymousSession();
     } catch (err: any) {
       setError(err.message || 'Failed to sign out');
       throw err;

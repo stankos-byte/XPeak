@@ -75,8 +75,8 @@ export const useQuestManager = (
           // Authenticated: ALWAYS use Firestore as source of truth
           quests = await getQuests(user.uid);
         } else {
-          // Not authenticated: use localStorage
-          quests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, []);
+          // Not authenticated: use localStorage (scoped by anonymous session)
+          quests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, [], null);
         }
         
         setMainQuests(quests);
@@ -84,8 +84,8 @@ export const useQuestManager = (
         initialLoadCompleteRef.current = true;
       } catch (error) {
         console.error('Failed to load quests:', error);
-        // On error, fall back to localStorage
-        const localQuests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, []);
+        // On error, fall back to localStorage (scoped by anonymous session)
+        const localQuests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, [], null);
         setMainQuests(localQuests);
         setExpandedNodes(new Set(localQuests.map((q: MainQuest) => q.id)));
         initialLoadCompleteRef.current = true;
@@ -103,7 +103,7 @@ export const useQuestManager = (
     if (isSyncingRef.current || !initialLoadCompleteRef.current) return;
     
     if (!user) {
-      persistenceService.set(STORAGE_KEYS.QUESTS, mainQuests); 
+      persistenceService.set(STORAGE_KEYS.QUESTS, mainQuests, null); 
     }
   }, [mainQuests, user]);
 

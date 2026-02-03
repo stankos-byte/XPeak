@@ -47,6 +47,14 @@ export interface MainQuest {
   id: string;
   title: string;
   categories: QuestCategory[];
+  /** Computed index: total number of tasks across all categories */
+  totalTasks?: number;
+  /** Computed index: number of completed tasks */
+  completedTasks?: number;
+  /** Computed index: unique skill categories used (for array-contains queries) */
+  skillCategories?: SkillCategory[];
+  /** Computed index: true when all tasks are complete */
+  isComplete?: boolean;
 }
 
 export interface Task {
@@ -60,6 +68,8 @@ export interface Task {
   streak: number;
   lastCompletedDate: string | null;
   createdAt: string;
+  /** Optional tags for flexible filtering with array-contains queries */
+  tags?: string[];
 }
 
 export interface TaskTemplate {
@@ -69,6 +79,8 @@ export interface TaskTemplate {
   difficulty: Difficulty;
   skillCategory: SkillCategory;
   isHabit: boolean;
+  /** Optional tags for template organization */
+  tags?: string[];
 }
 
 export interface Goal {
@@ -207,4 +219,54 @@ export const calculateTimeLeft = (expiresAt: string): string => {
  */
 export const isChallengeExpired = (expiresAt: string): boolean => {
   return new Date(expiresAt).getTime() <= Date.now();
+};
+
+// ============================================
+// Utility functions for quest data
+// ============================================
+
+/**
+ * Compute index fields for a quest (for efficient Firestore queries)
+ * Call this before saving a quest to ensure index fields are up-to-date
+ * @param quest The quest to compute indexes for
+ * @returns Quest with computed index fields
+ */
+export const computeQuestIndexes = (quest: MainQuest): MainQuest => {
+  let totalTasks = 0;
+  let completedTasks = 0;
+  const skillCategoriesSet = new Set<SkillCategory>();
+
+  quest.categories.forEach(category => {
+    category.tasks.forEach(task => {
+      totalTasks++;
+      if (task.completed) {
+        completedTasks++;
+      }
+      skillCategoriesSet.add(task.skillCategory);
+    });
+  });
+
+  return {
+    ...quest,
+    totalTasks,
+    completedTasks,
+    skillCategories: Array.from(skillCategoriesSet),
+    isComplete: totalTasks > 0 && completedTasks === totalTasks,
+  };
+};
+
+/**
+ * Compute completion percentage for a quest
+ * @param quest The quest to calculate completion for
+ * @returns Percentage (0-100)
+ */
+export const getQuestCompletionPercent = (quest: MainQuest): number => {
+  const total = quest.totalTasks ?? quest.categories.reduce(
+    (sum, cat) => sum + cat.tasks.length, 0
+  );
+  const completed = quest.completedTasks ?? quest.categories.reduce(
+    (sum, cat) => sum + cat.tasks.filter(t => t.completed).length, 0
+  );
+  
+  return total > 0 ? Math.round((completed / total) * 100) : 0;
 };

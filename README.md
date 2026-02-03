@@ -85,7 +85,7 @@ See [FIREBASE_SETUP.md](./FIREBASE_SETUP.md) for detailed setup instructions.
 ## 🏗️ Project Structure
 
 ```
-levelup-life/
+xpeak/
 ├── components/          # Reusable UI components
 │   ├── cards/          # Card components (TaskCard, etc.)
 │   ├── charts/         # Chart components (SkillRadar, etc.)

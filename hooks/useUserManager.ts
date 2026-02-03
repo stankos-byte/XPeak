@@ -50,7 +50,8 @@ const getDefaultUser = (): UserProfile => {
 };
 
 const getInitialUserLocal = (): UserProfile => {
-  const saved = storage.get<UserProfile | null>(STORAGE_KEYS.USER, null);
+  // Load from localStorage scoped by anonymous session (null uid)
+  const saved = storage.get<UserProfile | null>(STORAGE_KEYS.USER, null, null);
   
   if (saved) {
     // Migration: Ensure all default widgets exist
@@ -74,10 +75,10 @@ const getInitialUserLocal = (): UserProfile => {
     // Process history to ensure it's within limits and archive old entries
     const { activeHistory, archivedData } = processHistory(historyToProcess);
     
-    // Store archived data if any exists
+    // Store archived data if any exists (scoped by anonymous session)
     if (archivedData) {
-      const existingArchives = storage.get<ArchivedHistory[]>(STORAGE_KEYS.ARCHIVED_HISTORY, []);
-      persistenceService.set(STORAGE_KEYS.ARCHIVED_HISTORY, [...existingArchives, archivedData]);
+      const existingArchives = storage.get<ArchivedHistory[]>(STORAGE_KEYS.ARCHIVED_HISTORY, [], null);
+      persistenceService.set(STORAGE_KEYS.ARCHIVED_HISTORY, [...existingArchives, archivedData], null);
     }
 
     return { ...saved, layout, history: activeHistory };
@@ -168,8 +169,8 @@ export const useUserManager = (): UseUserManagerReturn => {
           // Check if we should migrate localStorage data
           // Migrate if Firestore is empty but localStorage has data (tasks, quests, or user profile)
           const localUser = getInitialUserLocal();
-          const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, []);
-          const localQuests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, []);
+          const localTasks = storage.get<Task[]>(STORAGE_KEYS.TASKS, [], null);
+          const localQuests = storage.get<MainQuest[]>(STORAGE_KEYS.QUESTS, [], null);
           
           // Check what Firestore has
           const firestoreTasks = await getTasks(authUser.uid);
@@ -232,7 +233,7 @@ export const useUserManager = (): UseUserManagerReturn => {
     if (isSyncingRef.current) return;
     
     if (!authUser) {
-      persistenceService.set(STORAGE_KEYS.USER, user); 
+      persistenceService.set(STORAGE_KEYS.USER, user, null); 
     }
   }, [user, authUser]);
 
@@ -276,8 +277,8 @@ export const useUserManager = (): UseUserManagerReturn => {
       
       // Store archived data if any exists (for now in localStorage, later in Firebase)
       if (archivedData) {
-        const existingArchives = storage.get<ArchivedHistory[]>(STORAGE_KEYS.ARCHIVED_HISTORY, []);
-        persistenceService.set(STORAGE_KEYS.ARCHIVED_HISTORY, [...existingArchives, archivedData]);
+        const existingArchives = storage.get<ArchivedHistory[]>(STORAGE_KEYS.ARCHIVED_HISTORY, [], authUser?.uid || null);
+        persistenceService.set(STORAGE_KEYS.ARCHIVED_HISTORY, [...existingArchives, archivedData], authUser?.uid || null);
       }
 
       // Save to Firestore if authenticated
