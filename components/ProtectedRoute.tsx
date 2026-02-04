@@ -2,6 +2,8 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+const isDev = import.meta.env.DEV;
+
 interface ProtectedRouteProps {
   children: React.ReactNode;
 }
@@ -26,13 +28,23 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     );
   }
 
-  // Redirect to login if not authenticated
+  // In development: allow access without sign-in (use local/anonymous data)
+  if (isDev && !user) {
+    return (
+      <>
+        <div className="bg-amber-500/20 border-b border-amber-500/40 px-4 py-2 text-center text-amber-200 text-sm font-medium">
+          Dev mode — using local data (not signed in)
+        </div>
+        {children}
+      </>
+    );
+  }
+
+  // Redirect to login if not authenticated (production)
   if (!user) {
-    // Save the attempted URL for redirecting after login
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Render the protected content
   return <>{children}</>;
 };
 

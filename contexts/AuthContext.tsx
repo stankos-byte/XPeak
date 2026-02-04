@@ -11,11 +11,15 @@ import {
   isSignInWithEmailLink,
   signInWithEmailLink,
   signOut as firebaseSignOut,
+  deleteUser,
   onAuthStateChanged,
   ActionCodeSettings,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
 } from 'firebase/auth';
 import { auth, useEmulators } from '../config/firebase';
-import { ensureUserDocument, FirestoreUserDocument } from '../services/firestoreUserService';
+import { ensureUserDocument, FirestoreUserDocument, deleteUserData } from '../services/firestoreUserService';
 
 // Types
 interface AuthContextType {
@@ -31,6 +35,8 @@ interface AuthContextType {
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signUpWithPassword: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -324,6 +330,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Delete account permanently
+  const deleteAccount = async () => {
+    if (!auth || !user) {
+      setError('No user is currently signed in');
+      return;
+    }
+
+    try {
+      setError(null);
+      const uid = user.uid;
+      
+      // First, delete all user data from Firestore
+      await deleteUserData(uid);
+      console.log('✅ Deleted user data from Firestore');
+      
+      // Then, delete the Firebase Auth user account
+      await deleteUser(user);
+      console.log('✅ Deleted Firebase Auth account');
+      
+      // Reset anonymous session
+      const { storage } = await import('../services/localStorage');
+      storage.resetAnonymousSession();
+    } catch (err: any) {
+      // If deleting auth user fails due to recent sign-in requirement
+      if (err.code === 'auth/requires-recent-login') {
+        setError('Please sign out and sign back in before deleting your account');
+      } else {
+        setError(err.message || 'Failed to delete account');
+      }
+      throw err;
+    }
+  };
+
   // Sign in as test user (for emulator only)
   const signInAsTestUser = async () => {
     if (!auth) {
@@ -354,6 +393,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Change password
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    if (!auth || !user || !user.email) {
+      setError('No user is currently signed in');
+      throw new Error('No user is currently signed in');
+    }
+
+    try {
+      setError(null);
+      
+      // Reauthenticate first (Firebase requires recent sign-in for sensitive operations)
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      
+      // Then update password
+      await updatePassword(user, newPassword);
+      console.log('✅ Password updated successfully');
+    } catch (err: any) {
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        setError('Current password is incorrect');
+      } else if (err.code === 'auth/weak-password') {
+        setError('New password is too weak. Please use at least 6 characters');
+      } else {
+        setError(err.message || 'Failed to change password');
+      }
+      throw err;
+    }
+  };
+
   // Clear error
   const clearError = () => setError(null);
 
@@ -370,6 +438,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signInWithPassword,
     signUpWithPassword,
     signOut,
+    deleteAccount,
+    changePassword,
     clearError,
   };
 

@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
-import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, Info } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, Info, LogOut, Trash2, AlertTriangle } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
+import ChangePasswordModal from '../../components/modals/ChangePasswordModal';
+import { openBillingPortal, isBillingConfigured } from '../../services/billingService';
+import toast from 'react-hot-toast';
 
 interface SettingsViewProps {
   user: UserProfile;
@@ -10,7 +15,58 @@ interface SettingsViewProps {
 
 const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
   const [activeTab, setActiveTab] = useState<'informations' | 'customizations'>('informations');
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+  const { signOut, deleteAccount, user: authUser } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      onClose();
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to logout:', error);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      setIsDeleting(true);
+      await deleteAccount();
+      setDeleteStep(0);
+      onClose();
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      setIsDeleting(false);
+    }
+  };
+
+  const handleUpgradePlan = () => {
+    onClose();
+    navigate('/plan');
+  };
+
+  const handleManageBilling = async () => {
+    if (!isBillingConfigured()) {
+      toast.error('Billing portal coming soon! Contact support for assistance.');
+      return;
+    }
+
+    if (!authUser?.uid) {
+      toast.error('You must be signed in to access billing');
+      return;
+    }
+
+    try {
+      await openBillingPortal(authUser.uid);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to open billing portal');
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-background/95 backdrop-blur-xl animate-in fade-in duration-300">
@@ -72,11 +128,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
                   <Lock size={20} />
                   <span className="text-sm font-medium uppercase tracking-wider">Password</span>
                 </div>
-                <button className="w-full bg-background border border-secondary/20 rounded-xl p-4 text-left hover:bg-surface transition-colors group">
+                <button 
+                  onClick={() => setIsChangePasswordOpen(true)}
+                  className="w-full bg-background border border-secondary/20 rounded-xl p-4 text-left hover:bg-surface transition-colors group"
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-white font-medium group-hover:text-primary transition-colors">Change Password</p>
-                      <p className="text-secondary text-xs mt-1">Last changed 30 days ago</p>
+                      <p className="text-secondary text-xs mt-1">Update your account password</p>
                     </div>
                     <div className="text-secondary group-hover:text-primary transition-colors">→</div>
                   </div>
@@ -94,7 +153,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
                     <p className="text-white font-bold">Free Plan</p>
                     <p className="text-secondary text-xs mt-1">Basic features included</p>
                   </div>
-                  <button className="bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest text-xs py-2 px-4 rounded-lg transition-all">
+                  <button 
+                    onClick={handleUpgradePlan}
+                    className="bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest text-xs py-2 px-4 rounded-lg transition-all"
+                  >
                     Upgrade
                   </button>
                 </div>
@@ -106,13 +168,46 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
                   <CreditCard size={20} />
                   <span className="text-sm font-medium uppercase tracking-wider">Manage Billing</span>
                 </div>
-                <button className="w-full bg-background border border-secondary/20 rounded-xl p-4 text-left hover:bg-surface transition-colors group">
+                <button 
+                  onClick={handleManageBilling}
+                  className="w-full bg-background border border-secondary/20 rounded-xl p-4 text-left hover:bg-surface transition-colors group"
+                >
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-white font-medium group-hover:text-primary transition-colors">Payment & Subscription</p>
                       <p className="text-secondary text-xs mt-1">Update payment methods</p>
                     </div>
                     <div className="text-secondary group-hover:text-primary transition-colors">→</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Logout Section */}
+              <div className="pt-4 border-t border-secondary/10 space-y-3">
+                <button 
+                  onClick={handleLogout}
+                  className="w-full bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-left hover:bg-red-500/20 transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <LogOut size={20} className="text-red-400" />
+                    <div>
+                      <p className="text-red-400 font-medium group-hover:text-red-300 transition-colors">Log Out</p>
+                      <p className="text-secondary text-xs mt-1">Sign out of your account</p>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Delete Account Button */}
+                <button 
+                  onClick={() => setDeleteStep(1)}
+                  className="w-full bg-red-900/20 border border-red-700/40 rounded-xl p-4 text-left hover:bg-red-900/30 transition-colors group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Trash2 size={20} className="text-red-500" />
+                    <div>
+                      <p className="text-red-500 font-medium group-hover:text-red-400 transition-colors">Delete Account</p>
+                      <p className="text-secondary text-xs mt-1">Permanently delete your account and all data</p>
+                    </div>
                   </div>
                 </button>
               </div>
@@ -192,6 +287,98 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
           )}
         </div>
       </div>
+
+      {/* First Delete Confirmation Modal */}
+      {deleteStep === 1 && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-surface border border-red-500/30 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden shadow-red-500/10">
+            <div className="flex items-center justify-between p-4 border-b border-red-500/10 bg-red-500/5">
+              <h3 className="font-black text-red-500 uppercase tracking-widest text-xs flex items-center gap-2">
+                <AlertTriangle size={14} /> Delete Account
+              </h3>
+              <button onClick={() => setDeleteStep(0)} className="text-secondary hover:text-white transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 text-center">
+              <h2 className="text-xl font-black text-white uppercase tracking-tighter italic mb-3">Are you sure?</h2>
+              <p className="text-secondary text-sm font-medium mb-6 leading-relaxed">
+                You are about to delete your account. This action is <span className="text-red-400 font-bold">permanent</span> and cannot be undone.
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => setDeleteStep(2)} 
+                  className="w-full bg-red-500 hover:bg-red-600 text-white font-black uppercase tracking-widest py-3 px-4 rounded-xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
+                >
+                  Continue
+                </button>
+                <button 
+                  onClick={() => setDeleteStep(0)} 
+                  className="w-full bg-surface border border-secondary/30 text-secondary hover:text-white font-black uppercase tracking-widest py-3 px-4 rounded-xl transition-all"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Second Delete Confirmation Modal */}
+      {deleteStep === 2 && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-background/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-surface border border-red-500/30 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden shadow-red-500/10">
+            <div className="flex items-center justify-between p-4 border-b border-red-500/10 bg-red-500/5">
+              <h3 className="font-black text-red-500 uppercase tracking-widest text-xs flex items-center gap-2">
+                <AlertTriangle size={14} /> Final Warning
+              </h3>
+              <button onClick={() => setDeleteStep(0)} className="text-secondary hover:text-white transition-colors" disabled={isDeleting}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 text-center">
+              <h2 className="text-xl font-black text-white uppercase tracking-tighter italic mb-3">This cannot be undone!</h2>
+              <p className="text-secondary text-sm font-medium mb-4 leading-relaxed">
+                All your data will be <span className="text-red-400 font-bold">permanently deleted</span>:
+              </p>
+              <ul className="text-left text-secondary text-sm mb-6 space-y-1 pl-4">
+                <li>• Your profile and settings</li>
+                <li>• All tasks and quests</li>
+                <li>• Your XP and progress</li>
+                <li>• Friends and challenges</li>
+              </ul>
+              <p className="text-red-400 text-xs font-bold mb-6">
+                You will not be able to recover this account or log in with this email again.
+              </p>
+              
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handleDeleteAccount}
+                  disabled={isDeleting}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white font-black uppercase tracking-widest py-3 px-4 rounded-xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Trash2 size={18} />
+                  {isDeleting ? 'Deleting...' : 'Delete Forever'}
+                </button>
+                <button 
+                  onClick={() => setDeleteStep(0)}
+                  disabled={isDeleting}
+                  className="w-full bg-surface border border-secondary/30 text-secondary hover:text-white font-black uppercase tracking-widest py-3 px-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal 
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
     </div>
   );
 };

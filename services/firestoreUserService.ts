@@ -10,6 +10,8 @@ import {
   getDoc, 
   setDoc, 
   updateDoc, 
+  deleteDoc,
+  getDocs,
   serverTimestamp,
   Timestamp 
 } from 'firebase/firestore';
@@ -224,4 +226,57 @@ export const ensureUserDocument = async (user: User): Promise<FirestoreUserDocum
 export const userDocumentExists = async (uid: string): Promise<boolean> => {
   const userDoc = await getUserDocument(uid);
   return userDoc !== null;
+};
+
+/**
+ * Delete all user data from Firestore
+ * This deletes:
+ * - All documents in user subcollections (tasks, quests, history, etc.)
+ * - The user document itself
+ */
+export const deleteUserData = async (uid: string): Promise<void> => {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  console.log('🗑️ Starting user data deletion for:', uid);
+
+  // List of all subcollections to delete
+  const subcollections = [
+    'tasks',
+    'quests', 
+    'history',
+    'archivedHistory',
+    'oracleChat',
+    'friends',
+    'activeChallenges'
+  ];
+
+  // Delete all documents in each subcollection
+  for (const subcollectionName of subcollections) {
+    try {
+      const subcollectionRef = fbPaths.tasksCollection(uid).parent
+        ? doc(db, COLLECTIONS.USERS, uid).collection 
+        : null;
+      
+      // Get the subcollection reference using the db directly
+      const { collection: firestoreCollection } = await import('firebase/firestore');
+      const subcollRef = firestoreCollection(db, COLLECTIONS.USERS, uid, subcollectionName);
+      const snapshot = await getDocs(subcollRef);
+      
+      // Delete each document in the subcollection
+      const deletePromises = snapshot.docs.map(docSnap => deleteDoc(docSnap.ref));
+      await Promise.all(deletePromises);
+      
+      console.log(`✅ Deleted ${snapshot.docs.length} documents from ${subcollectionName}`);
+    } catch (error) {
+      console.warn(`⚠️ Error deleting subcollection ${subcollectionName}:`, error);
+      // Continue with other subcollections even if one fails
+    }
+  }
+
+  // Delete the user document itself
+  const userRef = fbPaths.userDoc(uid);
+  await deleteDoc(userRef);
+  console.log('✅ Deleted user document for:', uid);
 };

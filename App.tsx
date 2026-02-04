@@ -4,6 +4,7 @@ import LandingView from './pages/landing/Landing';
 import AppLayout from './AppLayout';
 import Signup from './pages/auth/Signup';
 import Login from './pages/auth/Login';
+import Plan from './pages/app/Plan';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider } from './contexts/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -59,6 +60,15 @@ const App: React.FC = () => {
             <Route path="/app/*" element={<ThemedAppLayout />} />
             <Route path="/studio" element={<ThemedAppLayout />} />
             <Route path="/studio/*" element={<ThemedAppLayout />} />
+            
+            {/* Plan Page (Protected) */}
+            <Route path="/plan" element={
+              <ProtectedRoute>
+                <ThemeProvider>
+                  <Plan />
+                </ThemeProvider>
+              </ProtectedRoute>
+            } />
             
             {/* Info Routes */}
             <Route path="/features" element={<Features />} />
