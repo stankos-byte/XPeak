@@ -2,14 +2,38 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Check, Star, Shield, Crown, Zap, Flame, Target, Trophy, Users, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { createCheckoutSession, POLAR_PRODUCTS } from '../../services/billingService';
+import toast from 'react-hot-toast';
 
 const Plan: React.FC = () => {
   const navigate = useNavigate();
   const { userDocument } = useAuth();
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   // Mock current plan - in production, this would come from userDocument or subscription service
-  const currentPlan = 'free'; // 'free', 'professional', 'enterprise'
+  const currentPlan = 'free'; // 'free', 'pro'
+
+  // Handle checkout success/cancel
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    
+    if (params.get('success') === 'true') {
+      toast.success('🎉 Welcome to Pro! Your subscription is now active.');
+      // Clean up URL
+      window.history.replaceState({}, '', '/plan');
+    } else if (params.get('canceled') === 'true') {
+      toast.error('Checkout was canceled. Feel free to try again!');
+      // Clean up URL
+      window.history.replaceState({}, '', '/plan');
+    }
+  }, []);
+
+  // Calculate Pro pricing based on billing cycle
+  const proPrice = billingCycle === 'monthly' ? '$4' : '$40';
+  const proPeriod = billingCycle === 'monthly' ? '/mo' : '/yr';
+  const proPeriodSavings = billingCycle === 'yearly' ? 'Save $8/year' : null;
 
   const tiers = [
     {
@@ -34,11 +58,12 @@ const Plan: React.FC = () => {
       badge: 'Basic'
     },
     {
-      id: 'professional',
+      id: 'pro',
       name: 'Professional',
       icon: <Shield size={24} className="text-white" />,
-      price: '$9.99',
-      period: '/mo',
+      price: proPrice,
+      period: proPeriod,
+      savings: proPeriodSavings,
       description: 'For those dedicated to growth. Unlock the full potential of your productivity.',
       features: [
         'Unlimited Tasks & Projects',
@@ -46,49 +71,40 @@ const Plan: React.FC = () => {
         'Custom Progress Categories',
         'Team Collaboration Features',
         'Exclusive Monthly Updates',
-        'No Ads or Interruptions'
+        'No Ads or Interruptions',
+        'Personal AI Assistant',
+        'Priority Support'
       ],
       buffs: [
         { icon: <Flame size={14} />, label: 'Priority Support' },
         { icon: <Users size={14} />, label: 'Team Features' },
-        { icon: <Zap size={14} />, label: 'Daily Insights' }
+        { icon: <Zap size={14} />, label: 'AI-Powered' },
+        { icon: <Trophy size={14} />, label: 'Daily Insights' }
       ],
       buttonText: 'Upgrade to Pro',
       color: 'border-primary',
       badge: 'Popular'
-    },
-    {
-      id: 'enterprise',
-      name: 'Enterprise',
-      icon: <Crown size={24} className="text-orange-400" />,
-      price: '$19.99',
-      period: '/mo',
-      description: 'The ultimate plan. For high achievers who want every advantage available.',
-      features: [
-        'Everything in Professional plan',
-        'Personal AI Assistant',
-        'Early Beta Feature Access',
-        'Dedicated Support',
-        'Unlimited Custom Themes',
-        'Priority Feature Requests'
-      ],
-      buffs: [
-        { icon: <Flame size={14} />, label: 'AI-Powered' },
-        { icon: <Trophy size={14} />, label: 'VIP Access' },
-        { icon: <Zap size={14} />, label: 'Weekly Reports' },
-        { icon: <Star size={14} />, label: 'Custom Branding' }
-      ],
-      buttonText: 'Upgrade to Enterprise',
-      color: 'border-orange-400/30',
-      badge: 'Premium'
     }
   ];
 
-  const handleUpgrade = (tierId: string) => {
-    if (tierId === currentPlan) return;
-    // TODO: Implement Stripe checkout flow
-    console.log('Upgrade to:', tierId);
-    alert('Upgrade flow coming soon!');
+  const handleUpgrade = async (tierId: string) => {
+    if (tierId === currentPlan || isCheckingOut) return;
+    
+    setIsCheckingOut(true);
+    
+    try {
+      // Get the appropriate product ID based on billing cycle
+      const productId = billingCycle === 'monthly' 
+        ? POLAR_PRODUCTS.MONTHLY 
+        : POLAR_PRODUCTS.YEARLY;
+      
+      // Create checkout session and redirect
+      await createCheckoutSession(productId);
+    } catch (error: any) {
+      console.error('Checkout error:', error);
+      toast.error(error.message || 'Failed to start checkout. Please try again.');
+      setIsCheckingOut(false);
+    }
   };
 
   const toggleExpand = (tierId: string) => {
@@ -136,6 +152,35 @@ const Plan: React.FC = () => {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 lg:px-14 py-8 md:py-12">
+        {/* Billing Cycle Toggle */}
+        <div className="flex justify-center mb-8">
+          <div className="inline-flex items-center bg-surface border border-secondary/20 rounded-2xl p-1">
+            <button
+              onClick={() => setBillingCycle('monthly')}
+              className={`px-6 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-all ${
+                billingCycle === 'monthly'
+                  ? 'bg-primary text-white shadow-lg'
+                  : 'text-secondary hover:text-white'
+              }`}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setBillingCycle('yearly')}
+              className={`px-6 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition-all ${
+                billingCycle === 'yearly'
+                  ? 'bg-primary text-white shadow-lg'
+                  : 'text-secondary hover:text-white'
+              }`}
+            >
+              <span>Yearly</span>
+              <span className="ml-2 text-[10px] px-2 py-0.5 bg-green-500/20 text-green-400 rounded-full">
+                Save 17%
+              </span>
+            </button>
+          </div>
+        </div>
+
         {/* Mobile: Current Plan Banner */}
         <div className="md:hidden mb-8">
           <div className="bg-surface border border-primary/30 rounded-2xl p-5">
@@ -195,10 +240,15 @@ const Plan: React.FC = () => {
 
                   <div className="mb-6">
                     <h3 className="text-2xl font-black mb-2 text-white">{tier.name}</h3>
-                    <div className="flex items-baseline gap-1">
+                    <div className="flex items-baseline gap-1 mb-1">
                       <span className="text-4xl font-black text-white">{tier.price}</span>
                       {tier.period && <span className="text-sm opacity-40 font-bold text-white">{tier.period}</span>}
                     </div>
+                    {tier.savings && (
+                      <div className="text-xs font-bold text-green-400 bg-green-500/10 px-2 py-1 rounded inline-block">
+                        {tier.savings}
+                      </div>
+                    )}
                   </div>
 
                   <p className="text-sm mb-8 leading-relaxed min-h-[4rem] text-secondary/70">
@@ -234,16 +284,18 @@ const Plan: React.FC = () => {
                   {/* Button */}
                   <button
                     onClick={() => handleUpgrade(tier.id)}
-                    disabled={isCurrent}
+                    disabled={isCurrent || isCheckingOut}
                     className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all duration-300 ${
                       isCurrent
                         ? 'bg-surface border border-primary/30 text-primary cursor-default'
+                        : isCheckingOut
+                        ? 'bg-primary/50 text-white cursor-wait'
                         : isHighlight
                         ? 'bg-primary text-white hover:scale-105 shadow-xl shadow-primary/30'
                         : 'bg-white/10 text-white hover:bg-white/20 hover:scale-105 border border-white/10'
                     }`}
                   >
-                    {isCurrent ? 'Current Plan' : tier.buttonText}
+                    {isCurrent ? 'Current Plan' : isCheckingOut ? 'Loading...' : tier.buttonText}
                   </button>
                 </div>
               </div>
@@ -279,9 +331,16 @@ const Plan: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-black text-white">{tier.price}</span>
-                        {tier.period && <span className="text-sm text-secondary">{tier.period}</span>}
+                      <div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-3xl font-black text-white">{tier.price}</span>
+                          {tier.period && <span className="text-sm text-secondary">{tier.period}</span>}
+                        </div>
+                        {tier.savings && (
+                          <div className="text-[10px] font-bold text-green-400 bg-green-500/10 px-2 py-0.5 rounded mt-1 inline-block">
+                            {tier.savings}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -330,13 +389,16 @@ const Plan: React.FC = () => {
                 <div className="p-5 bg-background/40 border-t border-secondary/10">
                   <button
                     onClick={() => handleUpgrade(tier.id)}
+                    disabled={isCheckingOut}
                     className={`w-full py-4 rounded-xl font-black text-sm uppercase tracking-widest transition-all ${
-                      isHighlight
+                      isCheckingOut
+                        ? 'bg-primary/50 text-white cursor-wait'
+                        : isHighlight
                         ? 'bg-primary text-white hover:bg-cyan-400 shadow-lg shadow-primary/20'
                         : 'bg-white/10 text-white hover:bg-white/20'
                     }`}
                   >
-                    {tier.buttonText}
+                    {isCheckingOut ? 'Loading...' : tier.buttonText}
                   </button>
                 </div>
               </div>

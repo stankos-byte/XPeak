@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1625;
+            color: white;
+        }
+        .status {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border: 2px solid;
+        }
+        .success {
+            background: #10b98120;
+            border-color: #10b981;
+            color: #10b981;
+        }
+        .error {
+            background: #ef444420;
+            border-color: #ef4444;
+            color: #ef4444;
+        }
+        .info {
+            background: #3b82f620;
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px 10px 0;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        pre {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔥 Firebase Connection Test</h1>
+    <div id="status"></div>
+    <button onclick="testConnection()">Test Firebase Connection</button>
+    <button onclick="location.href='http://localhost:3000'">Go to App</button>
+    
+    <script type="module">
+        // Firebase config from .env.local
+        const firebaseConfig = {
+            apiKey: "AIzaSyARBy_sJLAGIuYU0Boo2VsrwEOYVomrrcg",
+            authDomain: "xpeak-prod-25154.firebaseapp.com",
+            projectId: "xpeak-prod-25154",
+            storageBucket: "xpeak-prod-25154.firebasestorage.app",
+            messagingSenderId: "646923597963",
+            appId: "1:646923597963:web:a367494d3cb7fdc40f7c8e",
+            measurementId: "G-FM1LPTNEMC"
+        };
+
+        let statusDiv = document.getElementById('status');
+
+        function addStatus(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = message;
+            statusDiv.appendChild(div);
+        }
+
+        window.testConnection = async function() {
+            statusDiv.innerHTML = '';
+            addStatus('🔄 Starting Firebase connection test...', 'info');
+
+            try {
+                // Import Firebase modules
+                addStatus('📦 Loading Firebase SDK...', 'info');
+                const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js');
+                const { getAuth, signInAnonymously } = await import('https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js');
+                
+                addStatus('✅ Firebase SDK loaded successfully', 'success');
+
+                // Initialize Firebase
+                addStatus('🚀 Initializing Firebase app...', 'info');
+                const app = initializeApp(firebaseConfig);
+                addStatus('✅ Firebase app initialized', 'success');
+
+                // Test Auth
+                addStatus('🔐 Testing Firebase Authentication...', 'info');
+                const auth = getAuth(app);
+                addStatus('✅ Firebase Auth initialized', 'success');
+
+                // Display config
+                addStatus(`<strong>📊 Configuration:</strong><pre>${JSON.stringify({
+                    projectId: firebaseConfig.projectId,
+                    authDomain: firebaseConfig.authDomain,
+                    emulators: false
+                }, null, 2)}</pre>`, 'info');
+
+                addStatus('🎉 All Firebase services are working! Your app should work now.', 'success');
+                addStatus('💡 Try refreshing your app at <a href="http://localhost:3000" style="color: #3b82f6;">http://localhost:3000</a>', 'success');
+
+            } catch (error) {
+                addStatus(`❌ Error: ${error.message}`, 'error');
+                addStatus(`<pre>${error.stack}</pre>`, 'error');
+            }
+        };
+
+        // Auto-run test on load
+        window.addEventListener('load', () => {
+            setTimeout(testConnection, 500);
+        });
+    </script>
+</body>
+</html>

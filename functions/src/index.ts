@@ -28,9 +28,11 @@ import {getFirestore, FieldValue} from "firebase-admin/firestore";
 import {initializeApp} from "firebase-admin/app";
 import * as logger from "firebase-functions/logger";
 import {GoogleGenerativeAI, SchemaType} from "@google/generative-ai";
+import {Polar} from "@polar-sh/sdk";
 
-// Define the Gemini API key secret
+// Define secrets
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
+const polarAccessToken = defineSecret("POLAR_ACCESS_TOKEN");
 
 // Initialize Firebase Admin
 logger.info("🔧 [INIT] Initializing Firebase Admin SDK...");
@@ -402,6 +404,151 @@ export const onUserCreate = beforeUserCreated(async (event) => {
 });
 
 // ==========================================
+// Polar Payment Integration
+// ==========================================
+
+/**
+ * createPolarCheckout - Creates a Polar checkout session
+ *
+ * This function handles subscription checkout via Polar.
+ * Requires user authentication.
+ */
+export const createPolarCheckout = onCall(
+  {
+    secrets: [polarAccessToken],
+    enforceAppCheck: false, // Set to true in production with App Check
+  },
+  async (request) => {
+    const startTime = Date.now();
+    const functionName = "createPolarCheckout";
+
+    logger.info("═".repeat(60));
+    logger.info(`🚀 [${functionName}] BEGIN EXECUTION - Create Polar Checkout`);
+    logger.info("═".repeat(60));
+
+    // Step 1: Verify user authentication
+    logger.info(`🔐 [${functionName}] Step 1: Verifying user authentication...`);
+
+    if (!request.auth) {
+      logger.error(`❌ [${functionName}] Authentication FAILED - No auth context present`);
+      logger.info(`⏱️ [${functionName}] Execution time: ${Date.now() - startTime}ms (REJECTED)`);
+      throw new HttpsError("unauthenticated", "User must be authenticated to checkout");
+    }
+
+    logger.info(`✅ [${functionName}] Authentication VERIFIED`, {
+      uid: request.auth.uid,
+      email: request.auth.token.email || "(no email)",
+    });
+
+    // Step 2: Validate request parameters
+    logger.info(`📥 [${functionName}] Step 2: Validating request parameters...`);
+
+    const {productId, successUrl, cancelUrl} = request.data;
+
+    logger.info(`📝 [${functionName}] Request data received`, {
+      productId: productId || "(missing)",
+      hasSuccessUrl: !!successUrl,
+      hasCancelUrl: !!cancelUrl,
+    });
+
+    if (!productId) {
+      logger.error(`❌ [${functionName}] Validation FAILED - Missing 'productId' parameter`);
+      throw new HttpsError("invalid-argument", "Missing 'productId' parameter");
+    }
+
+    if (!successUrl || !cancelUrl) {
+      logger.error(`❌ [${functionName}] Validation FAILED - Missing URL parameters`);
+      throw new HttpsError("invalid-argument", "Missing 'successUrl' or 'cancelUrl' parameter");
+    }
+
+    logger.info(`✅ [${functionName}] Request parameters validated`);
+
+    // Step 3: Retrieve Polar access token from secrets
+    logger.info(`🔑 [${functionName}] Step 3: Retrieving Polar access token...`);
+
+    const accessToken = polarAccessToken.value();
+
+    if (!accessToken) {
+      logger.error(`❌ [${functionName}] ACCESS TOKEN NOT CONFIGURED`);
+      throw new HttpsError("failed-precondition", "Payment service is not configured. Please contact support.");
+    }
+
+    logger.info(`✅ [${functionName}] Access token retrieved successfully`);
+
+    // Step 4: Initialize Polar client
+    logger.info(`💳 [${functionName}] Step 4: Initializing Polar client...`);
+
+    const polar = new Polar({
+      accessToken: accessToken,
+    });
+
+    logger.info(`✅ [${functionName}] Polar client initialized`);
+
+    // Step 5: Create checkout session
+    logger.info(`🔄 [${functionName}] Step 5: Creating checkout session...`);
+
+    try {
+      const apiStartTime = Date.now();
+
+      const checkout = await polar.checkouts.create({
+        products: [productId],
+        successUrl: successUrl,
+        customerEmail: request.auth.token.email || undefined,
+        metadata: {
+          userId: request.auth.uid,
+          email: request.auth.token.email || "",
+        },
+      });
+
+      const apiTime = Date.now() - apiStartTime;
+      const totalTime = Date.now() - startTime;
+
+      logger.info(`✅ [${functionName}] Checkout session created successfully`, {
+        checkoutId: checkout.id,
+        url: checkout.url,
+        apiTimeMs: apiTime,
+      });
+
+      logger.info("─".repeat(60));
+      logger.info(`✅ [${functionName}] CHECKOUT CREATION SUCCESSFUL`);
+      logger.info("─".repeat(60));
+      logger.info(`📤 [${functionName}] Summary:`, {
+        userId: request.auth.uid,
+        productId: productId,
+        checkoutId: checkout.id,
+        apiTimeMs: apiTime,
+        totalExecutionTimeMs: totalTime,
+      });
+      logger.info(`⏱️ [${functionName}] Total execution time: ${totalTime}ms`);
+      logger.info("═".repeat(60));
+
+      return {
+        success: true,
+        url: checkout.url,
+        checkoutId: checkout.id,
+      };
+    } catch (error: any) {
+      const totalTime = Date.now() - startTime;
+
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] CHECKOUT CREATION FAILED`);
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] Error details:`, {
+        userId: request.auth.uid,
+        productId: productId,
+        errorName: error.name,
+        errorMessage: error.message,
+        errorStack: error.stack,
+      });
+      logger.info(`⏱️ [${functionName}] Execution time before failure: ${totalTime}ms`);
+      logger.info("═".repeat(60));
+
+      throw new HttpsError("internal", "Failed to create checkout session. Please try again.");
+    }
+  }
+);
+
+// ==========================================
 // Gemini AI Proxy Function
 // ==========================================
 
@@ -545,7 +692,10 @@ export const geminiProxy = onCall(
 
       default:
         logger.error(`❌ [${functionName}] Unknown action: "${action}"`);
-        logger.error(`❌ [${functionName}] Valid actions: generateQuest, analyzeTask, generateChatResponse, generateFollowUpResponse`);
+        logger.error(
+          `❌ [${functionName}] Valid actions: generateQuest, analyzeTask, ` +
+          "generateChatResponse, generateFollowUpResponse"
+        );
         throw new HttpsError("invalid-argument", `Unknown action: ${action}`);
       }
 
@@ -901,7 +1051,10 @@ async function handleChatResponse(model: any, payload: {
   }
 
   logger.info(`✅ [${handlerName}] Payload validated successfully`);
-  logger.info(`📝 [${handlerName}] User input preview: "${userInput.substring(0, 100)}${userInput.length > 100 ? "..." : ""}"`);
+  logger.info(
+    `📝 [${handlerName}] User input preview: ` +
+    `"${userInput.substring(0, 100)}${userInput.length > 100 ? "..." : ""}"`
+  );
 
   // Step 2: Convert tools to Gemini format
   logger.info(`🔄 [${handlerName}] Step 2: Converting tools to Gemini format...`);
@@ -933,7 +1086,10 @@ async function handleChatResponse(model: any, payload: {
       role: msg.role === "user" ? "user" : "model",
       parts: [{text: msg.text || ""}],
     };
-    logger.info(`  📜 [${handlerName}] Message ${index + 1}: role="${formattedMsg.role}", length=${msg.text?.length || 0}`);
+    logger.info(
+      `  📜 [${handlerName}] Message ${index + 1}: ` +
+      `role="${formattedMsg.role}", length=${msg.text?.length || 0}`
+    );
     return formattedMsg;
   });
 
@@ -945,7 +1101,10 @@ async function handleChatResponse(model: any, payload: {
   logger.info(`🤖 [${handlerName}] Step 4: Creating chat session...`);
 
   const effectiveSystemPrompt = systemPrompt || ASSISTANT_SYSTEM_PROMPT;
-  logger.info(`📝 [${handlerName}] Using ${systemPrompt ? "custom" : "default"} system prompt (${effectiveSystemPrompt.length} chars)`);
+  logger.info(
+    `📝 [${handlerName}] Using ${systemPrompt ? "custom" : "default"} ` +
+    `system prompt (${effectiveSystemPrompt.length} chars)`
+  );
 
   const chat = model.startChat({
     history,
@@ -1002,7 +1161,7 @@ async function handleChatResponse(model: any, payload: {
     logger.info(`📤 [${handlerName}] Response summary:`, {
       responseType: "function_calls",
       functionCallCount: formattedCalls.length,
-      functionNames: formattedCalls.map((fc) => fc.name),
+      functionNames: formattedCalls.map((fc: any) => fc.name),
       apiTimeMs: apiTime,
       totalHandlerTimeMs: totalTime,
     });

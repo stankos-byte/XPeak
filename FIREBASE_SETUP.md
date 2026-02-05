@@ -81,7 +81,7 @@ VITE_FIREBASE_APP_ID=your_app_id
 
 ## Step 6: Set Up Firebase Secrets Manager
 
-The Gemini API key is stored securely in Firebase Secrets Manager:
+The Gemini API key and Polar access token are stored securely in Firebase Secrets Manager:
 
 ```bash
 # Make sure you're in the project root
@@ -92,9 +92,15 @@ firebase functions:secrets:set GEMINI_API_KEY
 
 # When prompted, paste your Gemini API key
 # The secret will be encrypted and stored securely
+
+# Set the Polar access token secret (for billing/payments)
+firebase functions:secrets:set POLAR_ACCESS_TOKEN
+
+# When prompted, paste your Polar access token
+# Get it from: https://polar.sh/settings
 ```
 
-**Important:** Never commit your API key to version control. It's stored securely in Firebase Secrets Manager.
+**Important:** Never commit your API keys to version control. They're stored securely in Firebase Secrets Manager.
 
 ## Step 7: Install Function Dependencies
 
@@ -182,9 +188,83 @@ firebase deploy --only firestore:rules
 - Gemini API: Check [Google AI pricing](https://ai.google.dev/pricing)
 - Firestore: Free tier includes 1 GB storage and 50K reads/day
 
+## Polar Payment Integration
+
+XPeak uses Polar.sh for subscription payments. Here's how to set it up:
+
+### 1. Create a Polar Account
+
+1. Go to [Polar.sh](https://polar.sh) and sign up
+2. Complete your organization setup
+3. Set up your payment methods and bank account
+
+### 2. Create Products in Polar
+
+Create two products for the Pro plan:
+
+1. **Monthly Plan**:
+   - Price: $4/month
+   - Recurring: Monthly
+   - Copy the Product ID (e.g., `fa779526-2149-490e-ad0b-0b087525d8a0`)
+
+2. **Yearly Plan**:
+   - Price: $40/year
+   - Recurring: Yearly
+   - Copy the Product ID (e.g., `42ab603f-1f3b-4592-931b-b25f0d615437`)
+
+### 3. Get Your Polar Access Token
+
+1. Go to Polar Settings → [API Keys](https://polar.sh/settings)
+2. Click "Create Access Token"
+3. Give it a name (e.g., "XPeak Production")
+4. Copy the access token (starts with `polar_`)
+
+### 4. Set the Polar Secret in Firebase
+
+```bash
+firebase functions:secrets:set POLAR_ACCESS_TOKEN
+# Paste your Polar access token when prompted
+```
+
+### 5. Update Product IDs (if different)
+
+If your Polar product IDs are different from the defaults, update them in:
+
+`services/billingService.ts`:
+
+```typescript
+export const POLAR_PRODUCTS = {
+  MONTHLY: 'your-monthly-product-id',
+  YEARLY: 'your-yearly-product-id',
+} as const;
+```
+
+### 6. Deploy Functions
+
+```bash
+firebase deploy --only functions
+```
+
+### 7. Test the Checkout Flow
+
+1. Run your app: `npm run dev`
+2. Navigate to the Plans page
+3. Click "Upgrade to Pro"
+4. You should be redirected to Polar checkout
+
+### Polar Webhook Integration (Optional)
+
+For production, you should set up webhooks to handle subscription events:
+
+1. Go to Polar Settings → Webhooks
+2. Add endpoint: `https://YOUR-REGION-YOUR-PROJECT.cloudfunctions.net/polarWebhook`
+3. Select events: `checkout.completed`, `subscription.updated`, `subscription.canceled`
+4. Create a Cloud Function to handle these webhooks
+
 ## Additional Resources
 
 - [Firebase Documentation](https://firebase.google.com/docs)
 - [Cloud Functions Documentation](https://firebase.google.com/docs/functions)
 - [Firebase Secrets Manager](https://firebase.google.com/docs/functions/config-env#secret-manager)
 - [Gemini API Documentation](https://ai.google.dev/docs)
+- [Polar.sh Documentation](https://docs.polar.sh)
