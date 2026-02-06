@@ -8,15 +8,22 @@ import { addHistoryEntry, processHistory, ArchivedHistory, migrateToDailyAggrega
 import { useAuth } from '../contexts/AuthContext';
 import { 
   updateUserProfile, 
-  updateUserGoals, 
-  updateUserTemplates, 
   updateUserLayout,
   updateUserIdentity,
   saveHistoryEntry,
   getHistory,
   migrateLocalStorageToFirestore,
   getTasks,
-  getQuests
+  getQuests,
+  getGoals,
+  subscribeGoals,
+  saveGoal,
+  updateGoalData,
+  deleteGoalData,
+  getTemplates,
+  subscribeTemplates,
+  saveTemplate,
+  deleteTemplateData
 } from '../services/firestoreDataService';
 import { getUserDocument } from '../services/firestoreUserService';
 
@@ -43,8 +50,6 @@ const getDefaultUser = (): UserProfile => {
     skills, 
     history: [], 
     identity: '', 
-    goals: [], 
-    templates: [], 
     layout: DEFAULT_LAYOUT 
   };
 };
@@ -120,6 +125,10 @@ export const useUserManager = (): UseUserManagerReturn => {
   const [showLevelUp, setShowLevelUp] = useState<{ show: boolean; level: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   
+  // Separate state for goals and templates (now in subcollections)
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
+  
   // Track if we're syncing from Firestore
   const isSyncingRef = useRef(false);
   const initialLoadCompleteRef = useRef(false);
@@ -161,10 +170,14 @@ export const useUserManager = (): UseUserManagerReturn => {
             skills: firestoreSkills,
             history: history,
             identity: firestoreUser.identity || '',
-            goals: firestoreUser.goals || [],
-            templates: firestoreUser.templates || [],
             layout: firestoreUser.layout || DEFAULT_LAYOUT
           };
+
+          // Load goals and templates from subcollections
+          const goalsData = await getGoals(authUser.uid);
+          const templatesData = await getTemplates(authUser.uid);
+          setGoals(goalsData);
+          setTemplates(templatesData);
 
           // Check if we should migrate localStorage data
           // Migrate if Firestore is empty but localStorage has data (tasks, quests, or user profile)
@@ -227,6 +240,44 @@ export const useUserManager = (): UseUserManagerReturn => {
 
     loadUserData();
   }, [authUser]);
+
+  // Subscribe to real-time updates for goals and templates
+  useEffect(() => {
+    if (!authUser) {
+      // Load from localStorage for non-authenticated users
+      const localGoals = storage.get<Goal[]>('goals', [], null);
+      const localTemplates = storage.get<TaskTemplate[]>('templates', [], null);
+      setGoals(localGoals);
+      setTemplates(localTemplates);
+      return;
+    }
+
+    // Subscribe to goals changes
+    const unsubscribeGoals = subscribeGoals(authUser.uid, (goalsData) => {
+      setGoals(goalsData);
+    });
+
+    // Subscribe to templates changes
+    const unsubscribeTemplates = subscribeTemplates(authUser.uid, (templatesData) => {
+      setTemplates(templatesData);
+    });
+
+    // Cleanup subscriptions
+    return () => {
+      unsubscribeGoals();
+      unsubscribeTemplates();
+    };
+  }, [authUser]);
+
+  // Save goals and templates to localStorage when not authenticated (fallback)
+  useEffect(() => {
+    if (isSyncingRef.current || !initialLoadCompleteRef.current) return;
+    
+    if (!authUser) {
+      persistenceService.set('goals', goals, null);
+      persistenceService.set('templates', templates, null);
+    }
+  }, [goals, templates, authUser]);
 
   // Save to localStorage when not authenticated (fallback)
   useEffect(() => { 
@@ -337,42 +388,38 @@ export const useUserManager = (): UseUserManagerReturn => {
   }, [authUser]);
 
   const addGoal = useCallback((title: string) => {
-    setUser(prev => {
-      const newGoals = [{ id: crypto.randomUUID(), title, completed: false }, ...prev.goals];
-      
-      // Save to Firestore if authenticated
-      if (authUser) {
-        updateUserGoals(authUser.uid, newGoals).catch(console.error);
-      }
-      
-      return { ...prev, goals: newGoals };
-    });
+    const newGoal: Goal = { id: crypto.randomUUID(), title, completed: false };
+    
+    if (authUser) {
+      // Save to Firestore subcollection
+      saveGoal(authUser.uid, newGoal).catch(console.error);
+    } else {
+      // Update local state for non-authenticated users
+      setGoals(prev => [newGoal, ...prev]);
+    }
   }, [authUser]);
 
   const toggleGoal = useCallback((id: string) => {
-    setUser(prev => {
-      const newGoals = prev.goals.map((g: Goal) => g.id === id ? { ...g, completed: !g.completed } : g);
-      
-      // Save to Firestore if authenticated
-      if (authUser) {
-        updateUserGoals(authUser.uid, newGoals).catch(console.error);
+    if (authUser) {
+      // Update in Firestore subcollection
+      const goal = goals.find(g => g.id === id);
+      if (goal) {
+        updateGoalData(authUser.uid, id, { completed: !goal.completed }).catch(console.error);
       }
-      
-      return { ...prev, goals: newGoals };
-    });
-  }, [authUser]);
+    } else {
+      // Update local state for non-authenticated users
+      setGoals(prev => prev.map(g => g.id === id ? { ...g, completed: !g.completed } : g));
+    }
+  }, [authUser, goals]);
 
   const deleteGoal = useCallback((id: string) => {
-    setUser(prev => {
-      const newGoals = prev.goals.filter((g: Goal) => g.id !== id);
-      
-      // Save to Firestore if authenticated
-      if (authUser) {
-        updateUserGoals(authUser.uid, newGoals).catch(console.error);
-      }
-      
-      return { ...prev, goals: newGoals };
-    });
+    if (authUser) {
+      // Delete from Firestore subcollection
+      deleteGoalData(authUser.uid, id).catch(console.error);
+    } else {
+      // Update local state for non-authenticated users
+      setGoals(prev => prev.filter(g => g.id !== id));
+    }
   }, [authUser]);
 
   const updateLayout = useCallback((layout: ProfileLayout) => {
@@ -384,30 +431,24 @@ export const useUserManager = (): UseUserManagerReturn => {
     }
   }, [authUser]);
 
-  const saveTemplate = useCallback((template: TaskTemplate) => {
-    setUser(prev => {
-      const newTemplates = [template, ...prev.templates];
-      
-      // Save to Firestore if authenticated
-      if (authUser) {
-        updateUserTemplates(authUser.uid, newTemplates).catch(console.error);
-      }
-      
-      return { ...prev, templates: newTemplates };
-    });
+  const saveTemplateFunc = useCallback((template: TaskTemplate) => {
+    if (authUser) {
+      // Save to Firestore subcollection
+      saveTemplate(authUser.uid, template).catch(console.error);
+    } else {
+      // Update local state for non-authenticated users
+      setTemplates(prev => [template, ...prev]);
+    }
   }, [authUser]);
 
   const deleteTemplate = useCallback((id: string) => {
-    setUser(prev => {
-      const newTemplates = prev.templates.filter((t: TaskTemplate) => t.id !== id);
-      
-      // Save to Firestore if authenticated
-      if (authUser) {
-        updateUserTemplates(authUser.uid, newTemplates).catch(console.error);
-      }
-      
-      return { ...prev, templates: newTemplates };
-    });
+    if (authUser) {
+      // Delete from Firestore subcollection
+      deleteTemplateData(authUser.uid, id).catch(console.error);
+    } else {
+      // Update local state for non-authenticated users
+      setTemplates(prev => prev.filter(t => t.id !== id));
+    }
   }, [authUser]);
 
   return {
@@ -420,7 +461,7 @@ export const useUserManager = (): UseUserManagerReturn => {
     toggleGoal,
     deleteGoal,
     updateLayout,
-    saveTemplate,
+    saveTemplate: saveTemplateFunc,
     deleteTemplate,
     showLevelUp,
     setShowLevelUp,

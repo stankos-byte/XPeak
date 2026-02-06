@@ -4,6 +4,7 @@ import { Difficulty, SkillCategory, Task, TaskTemplate } from '../../types';
 import { X, ChevronDown, Save, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import { analyzeTask } from '../../services/aiService';
 import { DEBUG_FLAGS } from '../../config/debugFlags';
+import { useSubscription } from '../../hooks/useSubscription';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [isHabit, setIsHabit] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
+  const { requirePro } = useSubscription();
 
   useEffect(() => {
     if (isOpen) {
@@ -56,6 +58,12 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   // Use AI to analyze task and suggest properties
   const handleSmartAudit = async () => {
     if (!title.trim()) return;
+    
+    // Check Pro access before making AI call
+    if (!requirePro('AI Task Analysis')) {
+      return;
+    }
+    
     setIsAuditing(true);
     try {
       const result = await analyzeTask(title);

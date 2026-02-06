@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, Info, LogOut, Trash2, AlertTriangle } from 'lucide-react';
+import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, LogOut, Trash2, AlertTriangle, Calendar, ExternalLink } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import ChangePasswordModal from '../../components/modals/ChangePasswordModal';
-import { openBillingPortal, isBillingConfigured } from '../../services/billingService';
 import toast from 'react-hot-toast';
+import { useSubscription } from '../../hooks/useSubscription';
+import { cancelSubscription, getCustomerPortalUrl } from '../../services/subscriptionService';
 
 interface SettingsViewProps {
   user: UserProfile;
@@ -18,9 +19,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [isLoadingPortal, setIsLoadingPortal] = useState(false);
   const { theme, setTheme } = useTheme();
   const { signOut, deleteAccount, user: authUser } = useAuth();
   const navigate = useNavigate();
+  const { subscription, isLoading: isSubscriptionLoading, isPro } = useSubscription();
 
   const handleLogout = async () => {
     try {
@@ -51,21 +55,48 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
   };
 
   const handleManageBilling = async () => {
-    if (!isBillingConfigured()) {
-      toast.error('Billing portal coming soon! Contact support for assistance.');
-      return;
-    }
-
-    if (!authUser?.uid) {
-      toast.error('You must be signed in to access billing');
-      return;
-    }
-
+    if (!authUser) return;
+    
+    setIsLoadingPortal(true);
     try {
-      await openBillingPortal(authUser.uid);
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to open billing portal');
+      const portalUrl = await getCustomerPortalUrl(authUser.uid);
+      window.open(portalUrl, '_blank');
+    } catch (error) {
+      console.error('Error opening customer portal:', error);
+      toast.error('Failed to open billing portal. Please try again.');
+    } finally {
+      setIsLoadingPortal(false);
     }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!authUser || !subscription) return;
+    
+    const confirmed = window.confirm(
+      'Are you sure you want to cancel your subscription? You will retain Pro access until the end of your billing period.'
+    );
+    
+    if (!confirmed) return;
+    
+    setIsCanceling(true);
+    try {
+      await cancelSubscription(authUser.uid);
+      toast.success('Subscription canceled. You will retain access until the end of your billing period.');
+    } catch (error) {
+      console.error('Error canceling subscription:', error);
+      toast.error('Failed to cancel subscription. Please try again.');
+    } finally {
+      setIsCanceling(false);
+    }
+  };
+
+  const formatDate = (date: Date | null) => {
+    if (!date) return 'N/A';
+    return new Date(date).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
   };
 
   return (
@@ -146,20 +177,79 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-secondary">
                   <Crown size={20} />
-                  <span className="text-sm font-medium uppercase tracking-wider">Plan Details</span>
+                  <span className="text-sm font-medium uppercase tracking-wider">Subscription</span>
                 </div>
-                <div className="bg-gradient-to-br from-surface to-surface/50 border border-secondary/20 rounded-xl p-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-white font-bold">Free Plan</p>
-                    <p className="text-secondary text-xs mt-1">Basic features included</p>
+                
+                {isSubscriptionLoading ? (
+                  <div className="bg-background border border-secondary/20 rounded-xl p-4">
+                    <p className="text-secondary text-sm">Loading subscription...</p>
                   </div>
-                  <button 
-                    onClick={handleUpgradePlan}
-                    className="bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest text-xs py-2 px-4 rounded-lg transition-all"
-                  >
-                    Upgrade
-                  </button>
-                </div>
+                ) : subscription ? (
+                  <div className="bg-gradient-to-br from-surface to-surface/50 border border-secondary/20 rounded-xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className={`font-black uppercase tracking-wide ${isPro ? 'text-primary' : 'text-white'}`}>
+                          {subscription.plan === 'pro' ? 'Pro Plan' : 'Free Plan'}
+                        </p>
+                        {subscription.billingCycle && (
+                          <p className="text-secondary text-xs mt-1 capitalize">
+                            Billed {subscription.billingCycle}
+                          </p>
+                        )}
+                      </div>
+                      {!isPro && (
+                        <button 
+                          onClick={handleUpgradePlan}
+                          className="bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest text-xs py-2 px-4 rounded-lg transition-all"
+                        >
+                          Upgrade
+                        </button>
+                      )}
+                    </div>
+
+                    {isPro && subscription.currentPeriodEnd && (
+                      <div className="flex items-start gap-2 text-sm">
+                        <Calendar size={16} className="text-secondary mt-0.5" />
+                        <div>
+                          <p className="text-gray-300">
+                            {subscription.cancelAtPeriodEnd ? 'Access until' : 'Renews on'}
+                          </p>
+                          <p className="text-white font-medium">{formatDate(subscription.currentPeriodEnd)}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {isPro && subscription.cancelAtPeriodEnd && (
+                      <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                        <p className="text-yellow-400 text-xs font-medium">
+                          Your subscription is canceled and will not renew. You will retain Pro access until the end of your billing period.
+                        </p>
+                      </div>
+                    )}
+
+                    {isPro && (
+                      <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                        <button 
+                          onClick={handleManageBilling}
+                          disabled={isLoadingPortal}
+                          className="flex-1 flex items-center justify-center gap-2 bg-background border border-secondary/20 hover:bg-surface text-white font-medium text-sm py-2.5 px-4 rounded-lg transition-all disabled:opacity-50"
+                        >
+                          <ExternalLink size={16} />
+                          {isLoadingPortal ? 'Loading...' : 'Billing Portal'}
+                        </button>
+                        {!subscription.cancelAtPeriodEnd && (
+                          <button 
+                            onClick={handleCancelSubscription}
+                            disabled={isCanceling}
+                            className="flex-1 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400 font-medium text-sm py-2.5 px-4 rounded-lg transition-all disabled:opacity-50"
+                          >
+                            {isCanceling ? 'Canceling...' : 'Cancel Subscription'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               {/* Manage Billing Section */}

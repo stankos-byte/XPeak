@@ -1,9 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command } from 'lucide-react';
+import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command, Lock } from 'lucide-react';
 import { UserProfile, Task, MainQuest, FriendChallenge, Friend, Difficulty, SkillCategory, ChatMessage } from '../../types';
 import { generateChatResponse, generateFollowUpResponse } from '../../services/aiService';
 import { DEBUG_FLAGS } from '../../config/debugFlags';
+import { useSubscription } from '../../hooks/useSubscription';
+import { useNavigate } from 'react-router-dom';
 
 interface AIAssistantProps {
   user: UserProfile;
@@ -80,6 +82,8 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { isPro, requirePro } = useSubscription();
+  const navigate = useNavigate();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -104,6 +108,11 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!input.trim() || isTyping) return;
+
+    // Check Pro access before making AI call
+    if (!requirePro('AI Assistant')) {
+      return;
+    }
 
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', text: input };
     addMessage(userMsg);
@@ -251,6 +260,38 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
       <div className="flex-1 bg-surface/50 border border-secondary/20 rounded-2xl overflow-hidden flex flex-col shadow-2xl backdrop-blur-sm relative">
          {/* Decorative grid background */}
          <div className="absolute inset-0 bg-[linear-gradient(rgba(0,225,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,225,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
+
+         {/* Pro Feature Gate */}
+         {!isPro && (
+           <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
+             <div className="max-w-md mx-4 text-center space-y-6">
+               <div className="w-20 h-20 mx-auto bg-primary/10 rounded-2xl flex items-center justify-center border-2 border-primary/30">
+                 <Lock size={40} className="text-primary" />
+               </div>
+               <div className="space-y-2">
+                 <h2 className="text-2xl font-black text-white uppercase tracking-tight">Pro Feature</h2>
+                 <p className="text-gray-400 leading-relaxed">
+                   The AI Performance Analytics Assistant is available exclusively for Pro members. 
+                   Upgrade to unlock AI-powered task suggestions, quest planning, and strategic insights.
+                 </p>
+               </div>
+               <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                 <button
+                   onClick={() => navigate('/plan')}
+                   className="px-6 py-3 bg-primary text-background rounded-xl font-bold hover:bg-cyan-400 transition-colors shadow-lg shadow-primary/20"
+                 >
+                   Upgrade to Pro
+                 </button>
+                 <button
+                   onClick={() => navigate('/dashboard')}
+                   className="px-6 py-3 bg-surface border border-secondary/20 text-gray-300 rounded-xl font-medium hover:bg-surface/80 hover:border-secondary/40 transition-colors"
+                 >
+                   Back to Dashboard
+                 </button>
+               </div>
+             </div>
+           </div>
+         )}
 
          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar relative z-10">
             {messages.filter(m => !m.isTool).map((msg) => (

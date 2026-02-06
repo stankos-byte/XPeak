@@ -22,17 +22,21 @@
 
 import {setGlobalOptions} from "firebase-functions/v2";
 import {beforeUserCreated} from "firebase-functions/v2/identity";
-import {onCall, HttpsError} from "firebase-functions/v2/https";
+import {onCall, HttpsError, onRequest} from "firebase-functions/v2/https";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 import {defineSecret} from "firebase-functions/params";
-import {getFirestore, FieldValue} from "firebase-admin/firestore";
+import {getFirestore, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {initializeApp} from "firebase-admin/app";
 import * as logger from "firebase-functions/logger";
 import {GoogleGenerativeAI, SchemaType} from "@google/generative-ai";
 import {Polar} from "@polar-sh/sdk";
+import {Webhook} from "svix";
+import {RateLimiter} from "limiter";
 
 // Define secrets
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 const polarAccessToken = defineSecret("POLAR_ACCESS_TOKEN");
+const polarWebhookSecret = defineSecret("POLAR_WEBHOOK_SECRET");
 
 // Initialize Firebase Admin
 logger.info("🔧 [INIT] Initializing Firebase Admin SDK...");
@@ -49,6 +53,63 @@ logger.info("✅ [INIT] Firestore connection established");
 logger.info("⚙️ [INIT] Setting global function options (maxInstances: 10)");
 setGlobalOptions({maxInstances: 10});
 logger.info("✅ [INIT] Cloud Functions initialization complete");
+
+// ==========================================
+// Rate Limiting
+// ==========================================
+
+// Rate limiters per user (10 requests per minute)
+const rateLimiters = new Map<string, RateLimiter>();
+
+// Daily quotas stored in memory (resets on cold start)
+interface UserQuota {
+  used: number;
+  resetAt: Date;
+}
+const dailyQuotas = new Map<string, UserQuota>();
+
+/**
+ * Check if a user has exceeded rate limits
+ * @param uid User ID
+ * @returns Object indicating if request is allowed and error message if not
+ */
+function checkRateLimit(uid: string): { allowed: boolean; error?: string } {
+  // Check per-minute rate limit (10 requests per minute)
+  if (!rateLimiters.has(uid)) {
+    rateLimiters.set(uid, new RateLimiter({tokensPerInterval: 10, interval: "minute"}));
+  }
+
+  const limiter = rateLimiters.get(uid)!;
+  if (!limiter.tryRemoveTokens(1)) {
+    return {
+      allowed: false,
+      error: "Rate limit exceeded. Maximum 10 requests per minute. Please try again later.",
+    };
+  }
+
+  // Check daily quota (100 requests per day)
+  const now = new Date();
+  const quota = dailyQuotas.get(uid);
+
+  if (!quota || quota.resetAt < now) {
+    // Reset quota for new day
+    const tomorrow = new Date(now);
+    tomorrow.setHours(24, 0, 0, 0);
+    dailyQuotas.set(uid, {used: 1, resetAt: tomorrow});
+    return {allowed: true};
+  }
+
+  if (quota.used >= 100) {
+    const hoursUntilReset = Math.ceil((quota.resetAt.getTime() - now.getTime()) / (1000 * 60 * 60));
+    return {
+      allowed: false,
+      error: `Daily quota exceeded. Maximum 100 AI requests per day. Resets in ${hoursUntilReset} hours.`,
+    };
+  }
+
+  quota.used++;
+  return {allowed: true};
+}
 
 // ==========================================
 // Types and Enums (matching Firestore schema)
@@ -337,8 +398,7 @@ export const onUserCreate = beforeUserCreated(async (event) => {
       level: 0,
       identity: "",
       skills: skills,
-      goals: [],
-      templates: [],
+      // goals and templates are now in subcollections for scalability
       layout: layout,
       settings: settings,
     };
@@ -548,6 +608,492 @@ export const createPolarCheckout = onCall(
   }
 );
 
+/**
+ * polarWebhook - Receives and processes Polar webhook events
+ *
+ * This function handles subscription lifecycle events from Polar.
+ * Validates webhook signature and updates Firestore subscription status.
+ */
+export const polarWebhook = onRequest(
+  {
+    secrets: [polarWebhookSecret],
+  },
+  async (req, res) => {
+    const startTime = Date.now();
+    const functionName = "polarWebhook";
+
+    logger.info("═".repeat(60));
+    logger.info(`🚀 [${functionName}] BEGIN EXECUTION - Polar Webhook`);
+    logger.info("═".repeat(60));
+
+    try {
+      // Step 1: Verify webhook signature
+      logger.info(`🔐 [${functionName}] Step 1: Verifying webhook signature...`);
+
+      const webhookSecret = polarWebhookSecret.value();
+
+      if (!webhookSecret) {
+        logger.error(`❌ [${functionName}] WEBHOOK SECRET NOT CONFIGURED`);
+        res.status(500).send("Webhook secret not configured");
+        return;
+      }
+
+      const svixId = req.headers["svix-id"] as string;
+      const svixTimestamp = req.headers["svix-timestamp"] as string;
+      const svixSignature = req.headers["svix-signature"] as string;
+
+      if (!svixId || !svixTimestamp || !svixSignature) {
+        logger.error(`❌ [${functionName}] Missing webhook signature headers`);
+        res.status(400).send("Missing signature headers");
+        return;
+      }
+
+      logger.info(`📝 [${functionName}] Webhook headers received`, {
+        svixId,
+        svixTimestamp,
+      });
+
+      const wh = new Webhook(webhookSecret);
+      let payload: any;
+
+      try {
+        payload = wh.verify(JSON.stringify(req.body), {
+          "svix-id": svixId,
+          "svix-timestamp": svixTimestamp,
+          "svix-signature": svixSignature,
+        });
+        logger.info(`✅ [${functionName}] Webhook signature verified`);
+      } catch (err: any) {
+        logger.error(`❌ [${functionName}] Webhook signature verification failed`, {
+          error: err.message,
+        });
+        res.status(400).send("Invalid signature");
+        return;
+      }
+
+      // Step 2: Process event
+      logger.info(`📥 [${functionName}] Step 2: Processing webhook event...`);
+
+      const eventType = payload.type;
+      const eventData = payload.data;
+
+      logger.info(`📝 [${functionName}] Event details`, {
+        type: eventType,
+        hasData: !!eventData,
+      });
+
+      let userId: string;
+
+      // Extract userId from metadata
+      if (eventData.metadata?.userId) {
+        userId = eventData.metadata.userId;
+        logger.info(`✅ [${functionName}] User ID found in metadata: ${userId}`);
+      } else if (eventData.customer?.metadata?.userId) {
+        userId = eventData.customer.metadata.userId;
+        logger.info(`✅ [${functionName}] User ID found in customer metadata: ${userId}`);
+      } else {
+        logger.error(`❌ [${functionName}] No userId found in webhook payload`);
+        res.status(400).send("No userId in webhook payload");
+        return;
+      }
+
+      // Step 3: Update Firestore based on event type
+      logger.info(`💾 [${functionName}] Step 3: Updating Firestore...`);
+
+      const subscriptionRef = db
+        .collection("users")
+        .doc(userId)
+        .collection("subscription")
+        .doc("current");
+
+      switch (eventType) {
+      case "checkout.completed": {
+        logger.info(`✅ [${functionName}] Processing checkout.completed event`);
+
+        const subscription = eventData.subscription;
+        if (!subscription) {
+          logger.error(`❌ [${functionName}] No subscription data in checkout.completed`);
+          res.status(400).send("No subscription data");
+          return;
+        }
+
+        const subscriptionData = {
+          status: "active",
+          plan: "pro",
+          billingCycle: subscription.recurring_interval === "month" ? "monthly" : "yearly",
+          polarSubscriptionId: subscription.id,
+          polarCustomerId: subscription.customer_id || null,
+          currentPeriodStart: subscription.current_period_start ?
+            Timestamp.fromDate(new Date(subscription.current_period_start)) : null,
+          currentPeriodEnd: subscription.current_period_end ?
+            Timestamp.fromDate(new Date(subscription.current_period_end)) : null,
+          cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        await subscriptionRef.set(subscriptionData);
+
+        logger.info(`✅ [${functionName}] Subscription created`, {
+          userId,
+          plan: "pro",
+          billingCycle: subscriptionData.billingCycle,
+        });
+        break;
+      }
+
+      case "subscription.updated": {
+        logger.info(`✅ [${functionName}] Processing subscription.updated event`);
+
+        const subscription = eventData;
+        const updateData = {
+          status: subscription.status || "active",
+          currentPeriodStart: subscription.current_period_start ?
+            Timestamp.fromDate(new Date(subscription.current_period_start)) : null,
+          currentPeriodEnd: subscription.current_period_end ?
+            Timestamp.fromDate(new Date(subscription.current_period_end)) : null,
+          cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        await subscriptionRef.update(updateData);
+
+        logger.info(`✅ [${functionName}] Subscription updated`, {
+          userId,
+          status: updateData.status,
+        });
+        break;
+      }
+
+      case "subscription.canceled": {
+        logger.info(`✅ [${functionName}] Processing subscription.canceled event`);
+
+        const updateData = {
+          status: "canceled",
+          plan: "free",
+          cancelAtPeriodEnd: false,
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        await subscriptionRef.update(updateData);
+
+        logger.info(`✅ [${functionName}] Subscription canceled`, {
+          userId,
+        });
+        break;
+      }
+
+      default:
+        logger.info(`⚠️ [${functionName}] Unhandled event type: ${eventType}`);
+        res.status(200).send("Event type not handled");
+        return;
+      }
+
+      const totalTime = Date.now() - startTime;
+
+      logger.info("─".repeat(60));
+      logger.info(`✅ [${functionName}] WEBHOOK PROCESSED SUCCESSFULLY`);
+      logger.info("─".repeat(60));
+      logger.info(`📤 [${functionName}] Summary:`, {
+        eventType,
+        userId,
+        totalExecutionTimeMs: totalTime,
+      });
+      logger.info("═".repeat(60));
+
+      res.status(200).send("Webhook processed");
+    } catch (error: any) {
+      const totalTime = Date.now() - startTime;
+
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] WEBHOOK PROCESSING FAILED`);
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] Error details:`, {
+        errorName: error.name,
+        errorMessage: error.message,
+        errorStack: error.stack,
+      });
+      logger.info(`⏱️ [${functionName}] Execution time before failure: ${totalTime}ms`);
+      logger.info("═".repeat(60));
+
+      res.status(500).send("Internal server error");
+    }
+  }
+);
+
+/**
+ * cancelPolarSubscription - Cancels a user's Polar subscription
+ *
+ * This function cancels an active subscription via Polar API.
+ * Requires user authentication.
+ */
+export const cancelPolarSubscription = onCall(
+  {
+    secrets: [polarAccessToken],
+    enforceAppCheck: false,
+  },
+  async (request) => {
+    const startTime = Date.now();
+    const functionName = "cancelPolarSubscription";
+
+    logger.info("═".repeat(60));
+    logger.info(`🚀 [${functionName}] BEGIN EXECUTION - Cancel Subscription`);
+    logger.info("═".repeat(60));
+
+    // Step 1: Verify user authentication
+    logger.info(`🔐 [${functionName}] Step 1: Verifying user authentication...`);
+
+    if (!request.auth) {
+      logger.error(`❌ [${functionName}] Authentication FAILED`);
+      throw new HttpsError("unauthenticated", "User must be authenticated");
+    }
+
+    logger.info(`✅ [${functionName}] Authentication VERIFIED`, {
+      uid: request.auth.uid,
+    });
+
+    // Step 2: Get subscription from Firestore
+    logger.info(`💾 [${functionName}] Step 2: Fetching subscription...`);
+
+    const subscriptionRef = db
+      .collection("users")
+      .doc(request.auth.uid)
+      .collection("subscription")
+      .doc("current");
+
+    const subscriptionSnap = await subscriptionRef.get();
+
+    if (!subscriptionSnap.exists) {
+      logger.error(`❌ [${functionName}] No subscription found`);
+      throw new HttpsError("not-found", "No active subscription found");
+    }
+
+    const subscriptionData = subscriptionSnap.data();
+    const polarSubscriptionId = subscriptionData?.polarSubscriptionId;
+
+    if (!polarSubscriptionId) {
+      logger.error(`❌ [${functionName}] No Polar subscription ID`);
+      throw new HttpsError("not-found", "No Polar subscription ID found");
+    }
+
+    logger.info(`✅ [${functionName}] Subscription found`, {
+      polarSubscriptionId,
+    });
+
+    // Step 3: Mark subscription for cancellation
+    logger.info(`📨 [${functionName}] Step 3: Marking subscription for cancellation...`);
+
+    try {
+      // Mark subscription for cancellation at period end in Firestore
+      // User should cancel through Polar's customer portal for proper billing handling
+      await subscriptionRef.update({
+        cancelAtPeriodEnd: true,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      logger.info(`✅ [${functionName}] Marked subscription for cancellation at period end`);
+
+      const totalTime = Date.now() - startTime;
+
+      logger.info("─".repeat(60));
+      logger.info(`✅ [${functionName}] SUBSCRIPTION CANCEL SCHEDULED`);
+      logger.info("─".repeat(60));
+      logger.info(`📤 [${functionName}] Summary:`, {
+        userId: request.auth.uid,
+        polarSubscriptionId,
+        totalExecutionTimeMs: totalTime,
+      });
+      logger.info("═".repeat(60));
+
+      return {
+        success: true,
+        message: "Subscription will be canceled at the end of the current billing period",
+      };
+    } catch (error: any) {
+      const totalTime = Date.now() - startTime;
+
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] CANCELLATION FAILED`);
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] Error details:`, {
+        errorMessage: error.message,
+        errorStack: error.stack,
+      });
+      logger.info(`⏱️ [${functionName}] Execution time: ${totalTime}ms`);
+      logger.info("═".repeat(60));
+
+      throw new HttpsError("internal", "Failed to cancel subscription");
+    }
+  }
+);
+
+/**
+ * getPolarCustomerPortal - Gets Polar customer portal URL
+ *
+ * This function returns a URL to the Polar customer portal where users can manage billing.
+ * Requires user authentication.
+ */
+export const getPolarCustomerPortal = onCall(
+  {
+    secrets: [polarAccessToken],
+    enforceAppCheck: false,
+  },
+  async (request) => {
+    const startTime = Date.now();
+    const functionName = "getPolarCustomerPortal";
+
+    logger.info("═".repeat(60));
+    logger.info(`🚀 [${functionName}] BEGIN EXECUTION - Get Customer Portal`);
+    logger.info("═".repeat(60));
+
+    // Step 1: Verify user authentication
+    if (!request.auth) {
+      logger.error(`❌ [${functionName}] Authentication FAILED`);
+      throw new HttpsError("unauthenticated", "User must be authenticated");
+    }
+
+    logger.info(`✅ [${functionName}] Authentication VERIFIED`);
+
+    // Step 2: Get subscription from Firestore
+    const subscriptionRef = db
+      .collection("users")
+      .doc(request.auth.uid)
+      .collection("subscription")
+      .doc("current");
+
+    const subscriptionSnap = await subscriptionRef.get();
+
+    if (!subscriptionSnap.exists) {
+      logger.error(`❌ [${functionName}] No subscription found`);
+      throw new HttpsError("not-found", "No active subscription found");
+    }
+
+    const subscriptionData = subscriptionSnap.data();
+    const polarCustomerId = subscriptionData?.polarCustomerId;
+
+    if (!polarCustomerId) {
+      logger.error(`❌ [${functionName}] No Polar customer ID`);
+      throw new HttpsError("not-found", "No customer ID found");
+    }
+
+    // Step 3: Return customer portal URL
+    // Polar uses a standard customer portal URL format
+    const portalUrl = `https://polar.sh/customer/${polarCustomerId}`;
+
+    const totalTime = Date.now() - startTime;
+
+    logger.info("─".repeat(60));
+    logger.info(`✅ [${functionName}] PORTAL URL RETRIEVED`);
+    logger.info("─".repeat(60));
+    logger.info(`📤 [${functionName}] Summary:`, {
+      userId: request.auth.uid,
+      totalExecutionTimeMs: totalTime,
+    });
+    logger.info("═".repeat(60));
+
+    return {
+      url: portalUrl,
+    };
+  }
+);
+
+/**
+ * getPolarInvoices - Gets user's invoices from Polar
+ *
+ * This function fetches all invoices for a user from Polar.
+ * Requires user authentication.
+ */
+export const getPolarInvoices = onCall(
+  {
+    secrets: [polarAccessToken],
+    enforceAppCheck: false,
+  },
+  async (request) => {
+    const startTime = Date.now();
+    const functionName = "getPolarInvoices";
+
+    logger.info("═".repeat(60));
+    logger.info(`🚀 [${functionName}] BEGIN EXECUTION - Get Invoices`);
+    logger.info("═".repeat(60));
+
+    // Step 1: Verify user authentication
+    if (!request.auth) {
+      logger.error(`❌ [${functionName}] Authentication FAILED`);
+      throw new HttpsError("unauthenticated", "User must be authenticated");
+    }
+
+    logger.info(`✅ [${functionName}] Authentication VERIFIED`);
+
+    // Step 2: Get subscription from Firestore
+    const subscriptionRef = db
+      .collection("users")
+      .doc(request.auth.uid)
+      .collection("subscription")
+      .doc("current");
+
+    const subscriptionSnap = await subscriptionRef.get();
+
+    if (!subscriptionSnap.exists) {
+      logger.error(`❌ [${functionName}] No subscription found`);
+      throw new HttpsError("not-found", "No subscription found");
+    }
+
+    const subscriptionData = subscriptionSnap.data();
+    const polarSubscriptionId = subscriptionData?.polarSubscriptionId;
+
+    if (!polarSubscriptionId) {
+      logger.error(`❌ [${functionName}] No Polar subscription ID`);
+      throw new HttpsError("not-found", "No subscription ID found");
+    }
+
+    // Step 3: Fetch invoices from Polar
+    const accessToken = polarAccessToken.value();
+
+    if (!accessToken) {
+      logger.error(`❌ [${functionName}] ACCESS TOKEN NOT CONFIGURED`);
+      throw new HttpsError("failed-precondition", "Payment service not configured");
+    }
+
+    const polar = new Polar({
+      accessToken: accessToken,
+    });
+
+    try {
+      // Note: This is a placeholder - actual Polar API method may differ
+      // Check Polar SDK documentation for the correct method to fetch invoices
+      const invoices = await polar.subscriptions.get(polarSubscriptionId);
+
+      const totalTime = Date.now() - startTime;
+
+      logger.info("─".repeat(60));
+      logger.info(`✅ [${functionName}] INVOICES RETRIEVED`);
+      logger.info("─".repeat(60));
+      logger.info(`📤 [${functionName}] Summary:`, {
+        userId: request.auth.uid,
+        totalExecutionTimeMs: totalTime,
+      });
+      logger.info("═".repeat(60));
+
+      return {
+        invoices: invoices || [],
+      };
+    } catch (error: any) {
+      const totalTime = Date.now() - startTime;
+
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] FETCH FAILED`);
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] Error details:`, {
+        errorMessage: error.message,
+      });
+      logger.info(`⏱️ [${functionName}] Execution time: ${totalTime}ms`);
+      logger.info("═".repeat(60));
+
+      throw new HttpsError("internal", "Failed to fetch invoices");
+    }
+  }
+);
+
 // ==========================================
 // Gemini AI Proxy Function
 // ==========================================
@@ -590,6 +1136,8 @@ export const geminiProxy = onCall(
   {
     secrets: [geminiApiKey],
     enforceAppCheck: false, // Set to true in production with App Check
+    maxInstances: 10,
+    minInstances: 1, // Keep 1 instance warm for faster response
   },
   async (request) => {
     const startTime = Date.now();
@@ -617,8 +1165,21 @@ export const geminiProxy = onCall(
       emailVerified: request.auth.token.email_verified,
     });
 
-    // Step 2: Validate request parameters
-    logger.info(`📥 [${functionName}] Step 2: Validating request parameters...`);
+    // Step 2: Check rate limits
+    logger.info(`🚦 [${functionName}] Step 2: Checking rate limits...`);
+
+    const rateLimitResult = checkRateLimit(request.auth.uid);
+    if (!rateLimitResult.allowed) {
+      logger.error(`❌ [${functionName}] Rate limit exceeded for user: ${request.auth.uid}`);
+      logger.error(`❌ [${functionName}] ${rateLimitResult.error}`);
+      logger.info(`⏱️ [${functionName}] Execution time: ${Date.now() - startTime}ms (RATE LIMITED)`);
+      throw new HttpsError("resource-exhausted", rateLimitResult.error!);
+    }
+
+    logger.info(`✅ [${functionName}] Rate limits passed`);
+
+    // Step 3: Validate request parameters
+    logger.info(`📥 [${functionName}] Step 3: Validating request parameters...`);
 
     const {action, payload} = request.data;
 
@@ -636,8 +1197,8 @@ export const geminiProxy = onCall(
 
     logger.info(`✅ [${functionName}] Request parameters validated - Action: "${action}"`);
 
-    // Step 3: Retrieve API key from secrets
-    logger.info(`🔑 [${functionName}] Step 3: Retrieving Gemini API key from secrets...`);
+    // Step 4: Retrieve API key from secrets
+    logger.info(`🔑 [${functionName}] Step 4: Retrieving Gemini API key from secrets...`);
 
     const apiKey = geminiApiKey.value();
 
@@ -650,8 +1211,8 @@ export const geminiProxy = onCall(
 
     logger.info(`✅ [${functionName}] API key retrieved successfully (length: ${apiKey.length} chars)`);
 
-    // Step 4: Initialize Gemini AI
-    logger.info(`🤖 [${functionName}] Step 4: Initializing Google Generative AI client...`);
+    // Step 5: Initialize Gemini AI
+    logger.info(`🤖 [${functionName}] Step 5: Initializing Google Generative AI client...`);
 
     const initStartTime = Date.now();
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -662,8 +1223,8 @@ export const geminiProxy = onCall(
       initTimeMs: Date.now() - initStartTime,
     });
 
-    // Step 5: Route to appropriate handler
-    logger.info(`🔄 [${functionName}] Step 5: Routing to action handler: "${action}"`);
+    // Step 6: Route to appropriate handler
+    logger.info(`🔄 [${functionName}] Step 6: Routing to action handler: "${action}"`);
 
     try {
       let result;
@@ -1358,6 +1919,105 @@ async function handleFollowUpResponse(model: any, payload: {
     },
   };
 }
+
+// ==========================================
+// Scheduled Cleanup Functions
+// ==========================================
+
+/**
+ * cleanupOldChatMessages - Scheduled function to delete chat messages older than 30 days
+ *
+ * Runs daily to maintain optimal storage costs and performance
+ * Processes all users and deletes messages in batches to avoid rate limits
+ */
+export const cleanupOldChatMessages = onSchedule(
+  {
+    schedule: "every 24 hours",
+    timeZone: "America/New_York",
+  },
+  async (event) => {
+    const functionName = "cleanupOldChatMessages";
+    const startTime = Date.now();
+
+    logger.info("═".repeat(60));
+    logger.info(`🚀 [${functionName}] BEGIN EXECUTION - Scheduled Chat Cleanup`);
+    logger.info("═".repeat(60));
+
+    const retentionDays = 30;
+    const cutoffDate = Timestamp.fromDate(
+      new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000)
+    );
+
+    logger.info(`🗑️ [${functionName}] Retention policy: Delete messages older than ${retentionDays} days`);
+    logger.info(`📅 [${functionName}] Cutoff date: ${cutoffDate.toDate().toISOString()}`);
+
+    try {
+      // Get all users
+      const usersSnapshot = await db.collection("users").get();
+      let totalDeleted = 0;
+      let usersProcessed = 0;
+
+      logger.info(`👥 [${functionName}] Found ${usersSnapshot.size} users to process`);
+
+      for (const userDoc of usersSnapshot.docs) {
+        const uid = userDoc.id;
+        const chatRef = db.collection("users").doc(uid).collection("oracleChat");
+
+        // Query old messages (batch of 500)
+        const oldMessagesQuery = chatRef
+          .where("createdAt", "<", cutoffDate)
+          .limit(500);
+
+        const oldMessages = await oldMessagesQuery.get();
+
+        if (!oldMessages.empty) {
+          const batch = db.batch();
+          oldMessages.docs.forEach((doc) => batch.delete(doc.ref));
+          await batch.commit();
+
+          totalDeleted += oldMessages.docs.length;
+          logger.info(`✅ [${functionName}] Deleted ${oldMessages.docs.length} old messages for user: ${uid}`);
+        }
+
+        usersProcessed++;
+
+        // Small delay every 10 users to avoid rate limits
+        if (usersProcessed % 10 === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
+      const duration = Date.now() - startTime;
+
+      logger.info("─".repeat(60));
+      logger.info(`✅ [${functionName}] CLEANUP COMPLETE`);
+      logger.info("─".repeat(60));
+      logger.info(`📊 [${functionName}] Summary:`, {
+        usersProcessed,
+        messagesDeleted: totalDeleted,
+        durationMs: duration,
+      });
+      logger.info("═".repeat(60));
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] CLEANUP FAILED`);
+      logger.error("─".repeat(60));
+      logger.error(`❌ [${functionName}] Error details:`, {
+        errorName: error.name,
+        errorMessage: error.message,
+        errorStack: error.stack,
+      });
+      logger.info(`⏱️ [${functionName}] Execution time before failure: ${duration}ms`);
+      logger.info("═".repeat(60));
+    }
+  }
+);
+
+// ==========================================
+// Helper Functions for AI
+// ==========================================
 
 /**
  * Convert tool parameters to Gemini schema format

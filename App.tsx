@@ -1,5 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './config/queryClient';
 import LandingView from './pages/landing/Landing';
 import AppLayout from './AppLayout';
 import Signup from './pages/auth/Signup';
@@ -49,9 +51,10 @@ const ThemedAppLayout: React.FC = () => {
 const App: React.FC = () => {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <GameToaster />
-        <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <GameToaster />
+          <BrowserRouter>
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/signup" element={<Signup />} />
@@ -86,6 +89,7 @@ const App: React.FC = () => {
           </Routes>
         </BrowserRouter>
       </AuthProvider>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 };

@@ -624,11 +624,47 @@ export async function clearChatMessages(uid: string): Promise<void> {
 // ============================================
 
 /**
+ * Delete documents from a collection in paginated batches
+ * Handles collections with >500 documents
+ */
+export async function deletePaginated(collectionRef: CollectionReference): Promise<number> {
+  const batchSize = 500;
+  let totalDeleted = 0;
+  let hasMore = true;
+  
+  while (hasMore) {
+    const q = query(collectionRef, limit(batchSize));
+    const snapshot = await getDocs(q);
+    
+    if (snapshot.empty) {
+      hasMore = false;
+      break;
+    }
+    
+    const batch = writeBatch(db!);
+    snapshot.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    
+    totalDeleted += snapshot.docs.length;
+    
+    // Small delay to avoid rate limits
+    if (snapshot.docs.length === batchSize) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } else {
+      // Last batch, we're done
+      hasMore = false;
+    }
+  }
+  
+  return totalDeleted;
+}
+
+/**
  * Reset all user data to default state
  * This will:
  * - Reset XP, level, skills to 0
- * - Clear identity, goals, templates
- * - Delete all tasks, quests, history, and chat messages
+ * - Clear identity
+ * - Delete all tasks, quests, history, chat messages, goals, and templates
  */
 export async function resetUserData(uid: string): Promise<void> {
   if (!db) throw new Error('Firestore not initialized');
@@ -648,8 +684,6 @@ export async function resetUserData(uid: string): Promise<void> {
     level: 0,
     skills: defaultSkills,
     identity: '',
-    goals: [],
-    templates: [],
     layout: { 
       widgets: [
         { id: 'identity', enabled: true, order: 0 }, 
@@ -664,44 +698,21 @@ export async function resetUserData(uid: string): Promise<void> {
   });
   console.log('✅ Reset user profile');
   
-  // Delete all tasks
-  const tasksRef = fbPaths.tasksCollection(uid);
-  const tasksSnapshot = await getDocs(tasksRef);
-  if (tasksSnapshot.size > 0) {
-    const tasksBatch = writeBatch(db);
-    tasksSnapshot.docs.forEach(doc => tasksBatch.delete(doc.ref));
-    await tasksBatch.commit();
-    console.log(`✅ Deleted ${tasksSnapshot.size} tasks`);
-  }
+  // Delete all subcollections with pagination
+  const collections = [
+    { ref: fbPaths.tasksCollection(uid), name: 'tasks' },
+    { ref: fbPaths.questsCollection(uid), name: 'quests' },
+    { ref: fbPaths.historyCollection(uid), name: 'history' },
+    { ref: fbPaths.oracleChatCollection(uid), name: 'chat messages' },
+    { ref: fbPaths.goalsCollection(uid), name: 'goals' },
+    { ref: fbPaths.templatesCollection(uid), name: 'templates' },
+  ];
   
-  // Delete all quests
-  const questsRef = fbPaths.questsCollection(uid);
-  const questsSnapshot = await getDocs(questsRef);
-  if (questsSnapshot.size > 0) {
-    const questsBatch = writeBatch(db);
-    questsSnapshot.docs.forEach(doc => questsBatch.delete(doc.ref));
-    await questsBatch.commit();
-    console.log(`✅ Deleted ${questsSnapshot.size} quests`);
-  }
-  
-  // Delete all history
-  const historyRef = fbPaths.historyCollection(uid);
-  const historySnapshot = await getDocs(historyRef);
-  if (historySnapshot.size > 0) {
-    const historyBatch = writeBatch(db);
-    historySnapshot.docs.forEach(doc => historyBatch.delete(doc.ref));
-    await historyBatch.commit();
-    console.log(`✅ Deleted ${historySnapshot.size} history entries`);
-  }
-  
-  // Delete all chat messages
-  const chatRef = fbPaths.oracleChatCollection(uid);
-  const chatSnapshot = await getDocs(chatRef);
-  if (chatSnapshot.size > 0) {
-    const chatBatch = writeBatch(db);
-    chatSnapshot.docs.forEach(doc => chatBatch.delete(doc.ref));
-    await chatBatch.commit();
-    console.log(`✅ Deleted ${chatSnapshot.size} chat messages`);
+  for (const { ref: collectionRef, name } of collections) {
+    const deleted = await deletePaginated(collectionRef);
+    if (deleted > 0) {
+      console.log(`✅ Deleted ${deleted} ${name}`);
+    }
   }
   
   console.log('🎉 User data reset complete! Refresh the page to see changes.');
@@ -769,8 +780,6 @@ export async function migrateLocalStorageToFirestore(
       updates.skills = firestoreSkills;
     }
     if (data.userProfile.identity !== undefined) updates.identity = data.userProfile.identity;
-    if (data.userProfile.goals) updates.goals = data.userProfile.goals;
-    if (data.userProfile.templates) updates.templates = data.userProfile.templates;
     if (data.userProfile.layout) updates.layout = data.userProfile.layout;
     
     if (Object.keys(updates).length > 0) {
@@ -779,7 +788,139 @@ export async function migrateLocalStorageToFirestore(
       await updateDoc(userRef, updates);
       console.log('✅ Migrated user profile data');
     }
+
+    // Migrate goals to subcollection
+    if (data.userProfile.goals && data.userProfile.goals.length > 0) {
+      for (const goal of data.userProfile.goals) {
+        await saveGoal(uid, goal);
+      }
+      console.log(`✅ Migrated ${data.userProfile.goals.length} goals to subcollection`);
+    }
+
+    // Migrate templates to subcollection
+    if (data.userProfile.templates && data.userProfile.templates.length > 0) {
+      for (const template of data.userProfile.templates) {
+        await saveTemplate(uid, template);
+      }
+      console.log(`✅ Migrated ${data.userProfile.templates.length} templates to subcollection`);
+    }
   }
   
   console.log('🎉 Migration complete!');
+}
+
+// ============================================
+// Goals Operations
+// ============================================
+
+/**
+ * Get all goals for a user
+ */
+export async function getGoals(uid: string): Promise<Goal[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const goalsRef = fbPaths.goalsCollection(uid);
+  const snapshot = await getDocs(goalsRef);
+  
+  return snapshot.docs.map(doc => doc.data() as Goal);
+}
+
+/**
+ * Subscribe to goals changes (real-time updates)
+ */
+export function subscribeGoals(
+  uid: string,
+  callback: (goals: Goal[]) => void
+): Unsubscribe {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const goalsRef = fbPaths.goalsCollection(uid);
+  
+  return onSnapshot(goalsRef, (snapshot) => {
+    const goals = snapshot.docs.map(doc => doc.data() as Goal);
+    callback(goals);
+  });
+}
+
+/**
+ * Save a single goal
+ */
+export async function saveGoal(uid: string, goal: Goal): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const goalRef = fbPaths.goalDoc(uid, goal.id);
+  await setDoc(goalRef, goal);
+}
+
+/**
+ * Update a goal
+ */
+export async function updateGoalData(uid: string, goalId: string, updates: Partial<Goal>): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const goalRef = fbPaths.goalDoc(uid, goalId);
+  await updateDoc(goalRef, updates as Record<string, unknown>);
+}
+
+/**
+ * Delete a goal
+ */
+export async function deleteGoalData(uid: string, goalId: string): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const goalRef = fbPaths.goalDoc(uid, goalId);
+  await deleteDoc(goalRef);
+}
+
+// ============================================
+// Templates Operations
+// ============================================
+
+/**
+ * Get all templates for a user
+ */
+export async function getTemplates(uid: string): Promise<TaskTemplate[]> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const templatesRef = fbPaths.templatesCollection(uid);
+  const snapshot = await getDocs(templatesRef);
+  
+  return snapshot.docs.map(doc => doc.data() as TaskTemplate);
+}
+
+/**
+ * Subscribe to templates changes (real-time updates)
+ */
+export function subscribeTemplates(
+  uid: string,
+  callback: (templates: TaskTemplate[]) => void
+): Unsubscribe {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const templatesRef = fbPaths.templatesCollection(uid);
+  
+  return onSnapshot(templatesRef, (snapshot) => {
+    const templates = snapshot.docs.map(doc => doc.data() as TaskTemplate);
+    callback(templates);
+  });
+}
+
+/**
+ * Save a single template
+ */
+export async function saveTemplate(uid: string, template: TaskTemplate): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const templateRef = fbPaths.templateDoc(uid, template.id);
+  await setDoc(templateRef, template);
+}
+
+/**
+ * Delete a template
+ */
+export async function deleteTemplateData(uid: string, templateId: string): Promise<void> {
+  if (!db) throw new Error('Firestore not initialized');
+  
+  const templateRef = fbPaths.templateDoc(uid, templateId);
+  await deleteDoc(templateRef);
 }

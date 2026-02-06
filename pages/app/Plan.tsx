@@ -4,6 +4,7 @@ import { ArrowLeft, Check, Star, Shield, Crown, Zap, Flame, Target, Trophy, User
 import { useAuth } from '../../contexts/AuthContext';
 import { createCheckoutSession, POLAR_PRODUCTS } from '../../services/billingService';
 import toast from 'react-hot-toast';
+import { useSubscription } from '../../hooks/useSubscription';
 
 const Plan: React.FC = () => {
   const navigate = useNavigate();
@@ -11,9 +12,10 @@ const Plan: React.FC = () => {
   const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const { subscription, isLoading: isSubscriptionLoading, isPro } = useSubscription();
 
-  // Mock current plan - in production, this would come from userDocument or subscription service
-  const currentPlan = 'free'; // 'free', 'pro'
+  // Get current plan from subscription
+  const currentPlan = subscription?.plan || 'free';
 
   // Handle checkout success/cancel
   React.useEffect(() => {
@@ -81,7 +83,7 @@ const Plan: React.FC = () => {
         { icon: <Zap size={14} />, label: 'AI-Powered' },
         { icon: <Trophy size={14} />, label: 'Daily Insights' }
       ],
-      buttonText: 'Upgrade to Pro',
+      buttonText: isPro ? 'Manage Subscription' : 'Upgrade to Pro',
       color: 'border-primary',
       badge: 'Popular'
     }
@@ -89,6 +91,12 @@ const Plan: React.FC = () => {
 
   const handleUpgrade = async (tierId: string) => {
     if (tierId === currentPlan || isCheckingOut) return;
+    
+    // If user is Pro and clicks on Pro tier, navigate to settings
+    if (tierId === 'pro' && isPro) {
+      navigate('/settings');
+      return;
+    }
     
     setIsCheckingOut(true);
     

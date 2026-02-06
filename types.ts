@@ -109,8 +109,7 @@ export interface UserProfile {
   skills: Record<SkillCategory, SkillProgress>;
   history: DailyActivity[]; // Changed to daily aggregates
   identity: string;
-  goals: Goal[];
-  templates: TaskTemplate[];
+  // goals and templates moved to subcollections for scalability
   layout?: ProfileLayout;
 }
 
@@ -181,6 +180,27 @@ export interface ChatMessage {
   role: 'user' | 'model' | 'system';
   text?: string;
   isTool?: boolean;
+}
+
+// ============================================
+// Subscription types
+// ============================================
+
+export type SubscriptionStatus = 'free' | 'active' | 'canceled' | 'past_due';
+export type SubscriptionPlan = 'free' | 'pro';
+export type BillingCycle = 'monthly' | 'yearly' | null;
+
+export interface SubscriptionDocument {
+  status: SubscriptionStatus;
+  plan: SubscriptionPlan;
+  billingCycle: BillingCycle;
+  polarSubscriptionId: string | null;
+  polarCustomerId: string | null;
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  cancelAtPeriodEnd: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // ============================================

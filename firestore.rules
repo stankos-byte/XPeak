@@ -70,6 +70,22 @@ service cloud.firestore {
       match /archivedHistory/{archiveId} {
         allow read, write: if isOwner(userId);
       }
+      
+      // Subscription subcollection - owner can read, only Cloud Functions can write
+      match /subscription/{docId} {
+        allow read: if isOwner(userId);
+        allow write: if false; // Only Cloud Functions can write
+      }
+      
+      // Goals subcollection - only owner can read/write
+      match /goals/{goalId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      // Templates subcollection - only owner can read/write
+      match /templates/{templateId} {
+        allow read, write: if isOwner(userId);
+      }
     }
     
     // ==========================================

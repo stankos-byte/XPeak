@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MainQuest, Task, QuestTask } from '../../types';
 import { Crown, Pencil, PlusCircle, Sparkles, Trash2, ChevronDown, ChevronRight, Plus, Loader2, MoreVertical } from 'lucide-react';
 import TaskCard from '../../components/cards/TaskCard';
+import { useSubscription } from '../../hooks/useSubscription';
 
 interface QuestsViewProps {
   mainQuests: MainQuest[];
@@ -35,6 +36,13 @@ const QuestsView: React.FC<QuestsViewProps> = ({
   popups 
 }) => {
   const [mobileMenuId, setMobileMenuId] = useState<string | null>(null);
+  const { requirePro } = useSubscription();
+
+  // Wrap handleQuestOracle with Pro gate
+  const handleQuestOracleWithGate = (quest: MainQuest) => {
+    if (!requirePro('AI Quest Generation')) return;
+    handleQuestOracle(quest);
+  };
 
   return (
     <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-8 duration-500 pb-24">
@@ -96,7 +104,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                         <PlusCircle size={20} />
                       </button>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleQuestOracle(mainQuest); }}
+                        onClick={(e) => { e.stopPropagation(); handleQuestOracleWithGate(mainQuest); }}
                         disabled={isOracling}
                         className={`p-2.5 rounded-xl transition-all border ${isOracling ? 'border-primary text-primary animate-pulse' : 'border-secondary/20 text-secondary hover:text-primary hover:border-primary/40'}`}
                         title="Generate Breakdown"
@@ -142,7 +150,7 @@ const QuestsView: React.FC<QuestsViewProps> = ({
                       <PlusCircle size={20} />
                     </button>
                     <button 
-                      onClick={(e) => { e.stopPropagation(); handleQuestOracle(mainQuest); setMobileMenuId(null); }}
+                      onClick={(e) => { e.stopPropagation(); handleQuestOracleWithGate(mainQuest); setMobileMenuId(null); }}
                       disabled={isOracling}
                       className={`flex-1 p-3 rounded-xl border transition-all flex justify-center bg-surface ${isOracling ? 'border-primary text-primary animate-pulse' : 'border-secondary/20 text-secondary hover:text-primary hover:border-primary/40'}`}
                       title="AI Oracle"

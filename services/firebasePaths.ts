@@ -36,6 +36,9 @@ export const USER_SUBCOLLECTIONS = {
   ORACLE_CHAT: 'oracleChat',
   FRIENDS: 'friends',
   ACTIVE_CHALLENGES: 'activeChallenges',
+  SUBSCRIPTION: 'subscription',
+  GOALS: 'goals',
+  TEMPLATES: 'templates',
 } as const;
 
 // ============================================
@@ -80,6 +83,19 @@ export const paths = {
     `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.ACTIVE_CHALLENGES}`,
   userActiveChallenge: (uid: string, challengeId: string) => 
     `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.ACTIVE_CHALLENGES}/${challengeId}`,
+  
+  userSubscription: (uid: string) => 
+    `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.SUBSCRIPTION}`,
+  userSubscriptionCurrent: (uid: string) => 
+    `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.SUBSCRIPTION}/current`,
+  
+  userGoals: (uid: string) => `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.GOALS}`,
+  userGoal: (uid: string, goalId: string) => 
+    `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.GOALS}/${goalId}`,
+  
+  userTemplates: (uid: string) => `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.TEMPLATES}`,
+  userTemplate: (uid: string, templateId: string) => 
+    `${COLLECTIONS.USERS}/${uid}/${USER_SUBCOLLECTIONS.TEMPLATES}/${templateId}`,
   
   // Top-level collection paths
   challenge: (challengeId: string) => `${COLLECTIONS.CHALLENGES}/${challengeId}`,
@@ -221,6 +237,20 @@ class FirebasePathsService {
   }
 
   // ==========================================
+  // Subscription
+  // ==========================================
+
+  /** Get user's subscription collection reference */
+  subscriptionCollection(uid: string): CollectionReference {
+    return collection(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.SUBSCRIPTION);
+  }
+
+  /** Get current subscription document reference */
+  subscriptionDoc(uid: string): DocumentReference {
+    return doc(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.SUBSCRIPTION, 'current');
+  }
+
+  // ==========================================
   // Top-Level Collections
   // ==========================================
 
@@ -242,6 +272,34 @@ class FirebasePathsService {
   /** Get specific friend request document reference */
   friendRequestDoc(requestId: string): DocumentReference {
     return doc(this.ensureDb(), COLLECTIONS.FRIEND_REQUESTS, requestId);
+  }
+
+  // ==========================================
+  // Goals
+  // ==========================================
+
+  /** Get user's goals collection reference */
+  goalsCollection(uid: string): CollectionReference {
+    return collection(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.GOALS);
+  }
+
+  /** Get specific goal document reference */
+  goalDoc(uid: string, goalId: string): DocumentReference {
+    return doc(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.GOALS, goalId);
+  }
+
+  // ==========================================
+  // Templates
+  // ==========================================
+
+  /** Get user's templates collection reference */
+  templatesCollection(uid: string): CollectionReference {
+    return collection(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.TEMPLATES);
+  }
+
+  /** Get specific template document reference */
+  templateDoc(uid: string, templateId: string): DocumentReference {
+    return doc(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.TEMPLATES, templateId);
   }
 }
 

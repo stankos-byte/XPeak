@@ -59,8 +59,7 @@ export interface FirestoreUserDocument {
   level: number;
   identity: string;
   skills: Record<SkillCategory, FirestoreSkillData>;
-  goals: Goal[];
-  templates: TaskTemplate[];
+  // goals and templates moved to subcollections for scalability
   layout: ProfileLayout;
   settings: UserSettings;
 }
@@ -142,8 +141,7 @@ const createUserDocument = async (user: User): Promise<FirestoreUserDocument> =>
     level: 0,
     identity: '',
     skills: getDefaultSkills(),
-    goals: [],
-    templates: [],
+    // goals and templates are now in subcollections
     layout: DEFAULT_LAYOUT,
     settings: DEFAULT_SETTINGS
   };
@@ -233,6 +231,7 @@ export const userDocumentExists = async (uid: string): Promise<boolean> => {
  * This deletes:
  * - All documents in user subcollections (tasks, quests, history, etc.)
  * - The user document itself
+ * Uses paginated deletion to handle collections with >500 documents
  */
 export const deleteUserData = async (uid: string): Promise<void> => {
   if (!db) {
@@ -241,36 +240,31 @@ export const deleteUserData = async (uid: string): Promise<void> => {
 
   console.log('🗑️ Starting user data deletion for:', uid);
 
-  // List of all subcollections to delete
+  // Import deletePaginated function
+  const { deletePaginated } = await import('./firestoreDataService');
+
+  // List of all subcollections to delete with their references
   const subcollections = [
-    'tasks',
-    'quests', 
-    'history',
-    'archivedHistory',
-    'oracleChat',
-    'friends',
-    'activeChallenges'
+    { ref: fbPaths.tasksCollection(uid), name: 'tasks' },
+    { ref: fbPaths.questsCollection(uid), name: 'quests' },
+    { ref: fbPaths.historyCollection(uid), name: 'history' },
+    { ref: fbPaths.archivedHistoryCollection(uid), name: 'archivedHistory' },
+    { ref: fbPaths.oracleChatCollection(uid), name: 'oracleChat' },
+    { ref: fbPaths.friendsCollection(uid), name: 'friends' },
+    { ref: fbPaths.activeChallengesCollection(uid), name: 'activeChallenges' },
+    { ref: fbPaths.goalsCollection(uid), name: 'goals' },
+    { ref: fbPaths.templatesCollection(uid), name: 'templates' },
   ];
 
-  // Delete all documents in each subcollection
-  for (const subcollectionName of subcollections) {
+  // Delete all documents in each subcollection with pagination
+  for (const { ref: collectionRef, name } of subcollections) {
     try {
-      const subcollectionRef = fbPaths.tasksCollection(uid).parent
-        ? doc(db, COLLECTIONS.USERS, uid).collection 
-        : null;
-      
-      // Get the subcollection reference using the db directly
-      const { collection: firestoreCollection } = await import('firebase/firestore');
-      const subcollRef = firestoreCollection(db, COLLECTIONS.USERS, uid, subcollectionName);
-      const snapshot = await getDocs(subcollRef);
-      
-      // Delete each document in the subcollection
-      const deletePromises = snapshot.docs.map(docSnap => deleteDoc(docSnap.ref));
-      await Promise.all(deletePromises);
-      
-      console.log(`✅ Deleted ${snapshot.docs.length} documents from ${subcollectionName}`);
+      const deleted = await deletePaginated(collectionRef);
+      if (deleted > 0) {
+        console.log(`✅ Deleted ${deleted} documents from ${name}`);
+      }
     } catch (error) {
-      console.warn(`⚠️ Error deleting subcollection ${subcollectionName}:`, error);
+      console.warn(`⚠️ Error deleting subcollection ${name}:`, error);
       // Continue with other subcollections even if one fails
     }
   }
