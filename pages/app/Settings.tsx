@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, LogOut, Trash2, AlertTriangle, Calendar, ExternalLink } from 'lucide-react';
+import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, LogOut, Trash2, AlertTriangle, Calendar, ExternalLink, Zap } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import ChangePasswordModal from '../../components/modals/ChangePasswordModal';
+import BillingManagement from '../../components/BillingManagement';
 import toast from 'react-hot-toast';
 import { useSubscription } from '../../hooks/useSubscription';
-import { cancelSubscription, getCustomerPortalUrl } from '../../services/subscriptionService';
+import { cancelSubscription } from '../../services/subscriptionService';
+import { getUsageSummary, estimateRemainingConversations } from '../../services/tokenService';
 
 interface SettingsViewProps {
   user: UserProfile;
@@ -20,7 +22,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
-  const [isLoadingPortal, setIsLoadingPortal] = useState(false);
+  const [showBillingManagement, setShowBillingManagement] = useState(false);
   const { theme, setTheme } = useTheme();
   const { signOut, deleteAccount, user: authUser } = useAuth();
   const navigate = useNavigate();
@@ -54,19 +56,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
     navigate('/plan');
   };
 
-  const handleManageBilling = async () => {
-    if (!authUser) return;
-    
-    setIsLoadingPortal(true);
-    try {
-      const portalUrl = await getCustomerPortalUrl(authUser.uid);
-      window.open(portalUrl, '_blank');
-    } catch (error) {
-      console.error('Error opening customer portal:', error);
-      toast.error('Failed to open billing portal. Please try again.');
-    } finally {
-      setIsLoadingPortal(false);
-    }
+  const handleManageBilling = () => {
+    setShowBillingManagement(true);
   };
 
   const handleCancelSubscription = async () => {
@@ -227,30 +218,109 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
                       </div>
                     )}
 
-                    {isPro && (
-                      <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                    {isPro && !subscription.cancelAtPeriodEnd && (
+                      <div className="pt-2">
                         <button 
-                          onClick={handleManageBilling}
-                          disabled={isLoadingPortal}
-                          className="flex-1 flex items-center justify-center gap-2 bg-background border border-secondary/20 hover:bg-surface text-white font-medium text-sm py-2.5 px-4 rounded-lg transition-all disabled:opacity-50"
+                          onClick={handleCancelSubscription}
+                          disabled={isCanceling}
+                          className="w-full bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400 font-medium text-sm py-2.5 px-4 rounded-lg transition-all disabled:opacity-50"
                         >
-                          <ExternalLink size={16} />
-                          {isLoadingPortal ? 'Loading...' : 'Billing Portal'}
+                          {isCanceling ? 'Canceling...' : 'Cancel Subscription'}
                         </button>
-                        {!subscription.cancelAtPeriodEnd && (
-                          <button 
-                            onClick={handleCancelSubscription}
-                            disabled={isCanceling}
-                            className="flex-1 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 text-red-400 font-medium text-sm py-2.5 px-4 rounded-lg transition-all disabled:opacity-50"
-                          >
-                            {isCanceling ? 'Canceling...' : 'Cancel Subscription'}
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>
-                ) : null}
+                ) : (
+                  <div className="bg-background border border-secondary/20 rounded-xl p-4">
+                    <p className="text-secondary text-sm mb-3">Unable to load subscription status. You may need to refresh or check your connection.</p>
+                    <button 
+                      onClick={handleUpgradePlan}
+                      className="bg-primary hover:bg-cyan-400 text-background font-black uppercase tracking-widest text-xs py-2 px-4 rounded-lg transition-all"
+                    >
+                      View Plans
+                    </button>
+                  </div>
+                )}
               </div>
+
+              {/* Token Usage Section */}
+              {subscription && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 text-secondary">
+                    <Zap size={20} />
+                    <span className="text-sm font-medium uppercase tracking-wider">AI Token Usage</span>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-surface to-surface/50 border border-secondary/20 rounded-xl p-5 space-y-4">
+                    {(() => {
+                      const usage = getUsageSummary(subscription.tokenUsage, subscription.plan);
+                      const remainingConversations = estimateRemainingConversations(subscription.tokenUsage, subscription.plan);
+                      
+                      return (
+                        <>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-gray-300">Usage</span>
+                              <span className={`font-bold ${usage.hasExceededLimit ? 'text-red-400' : usage.isApproachingLimit ? 'text-yellow-400' : 'text-white'}`}>
+                                {usage.used} / {usage.limit}
+                              </span>
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            <div className="w-full bg-background rounded-full h-2.5 overflow-hidden">
+                              <div 
+                                className={`h-full transition-all duration-500 rounded-full ${
+                                  usage.hasExceededLimit ? 'bg-red-500' : 
+                                  usage.isApproachingLimit ? 'bg-yellow-500' : 
+                                  'bg-primary'
+                                }`}
+                                style={{ width: `${Math.min(usage.percent, 100)}%` }}
+                              />
+                            </div>
+                            
+                            <p className="text-xs text-gray-400">
+                              {usage.percent}% used • {usage.remaining} remaining
+                            </p>
+                          </div>
+                          
+                          {/* Estimated Conversations */}
+                          <div className="flex items-center justify-between text-sm border-t border-secondary/10 pt-3">
+                            <span className="text-gray-300">Est. conversations left</span>
+                            <span className="text-white font-medium">~{remainingConversations}</span>
+                          </div>
+                          
+                          {/* Warning Messages */}
+                          {usage.hasExceededLimit && (
+                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3">
+                              <p className="text-red-400 text-xs font-medium">
+                                {subscription.plan === 'pro' 
+                                  ? 'Token limit reached. Your limit will reset at the end of your billing period.'
+                                  : 'Token limit reached. Upgrade to Pro for more tokens.'}
+                              </p>
+                            </div>
+                          )}
+                          
+                          {usage.isApproachingLimit && !usage.hasExceededLimit && (
+                            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                              <p className="text-yellow-400 text-xs font-medium">
+                                You're approaching your token limit. Consider upgrading or reducing AI usage.
+                              </p>
+                            </div>
+                          )}
+                          
+                          {subscription.plan === 'free' && (
+                            <div className="bg-primary/10 border border-primary/30 rounded-lg p-3">
+                              <p className="text-primary text-xs">
+                                💡 Free users get $0.13 lifetime tokens. Upgrade to Pro for $2.00 per month!
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
 
               {/* Manage Billing Section */}
               <div className="space-y-3">
@@ -265,7 +335,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-white font-medium group-hover:text-primary transition-colors">Payment & Subscription</p>
-                      <p className="text-secondary text-xs mt-1">Update payment methods</p>
+                      <p className="text-secondary text-xs mt-1">View invoices and manage billing</p>
                     </div>
                     <div className="text-secondary group-hover:text-primary transition-colors">→</div>
                   </div>
@@ -469,6 +539,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
         isOpen={isChangePasswordOpen}
         onClose={() => setIsChangePasswordOpen(false)}
       />
+
+      {showBillingManagement && (
+        <BillingManagement onClose={() => setShowBillingManagement(false)} />
+      )}
     </div>
   );
 };

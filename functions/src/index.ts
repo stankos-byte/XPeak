@@ -112,6 +112,248 @@ function checkRateLimit(uid: string): { allowed: boolean; error?: string } {
 }
 
 // ==========================================
+// Token Usage Tracking
+// ==========================================
+
+/**
+ * Gemini 2.0 Flash pricing constants
+ */
+const GEMINI_PRICING = {
+  INPUT_PER_MILLION: 0.075, // $0.075 per 1M input tokens
+  OUTPUT_PER_MILLION: 0.30, // $0.30 per 1M output tokens
+};
+
+/**
+ * Token limit configuration per plan
+ */
+const TOKEN_LIMITS = {
+  FREE: 0.13, // $0.13 lifetime limit for free users
+  PRO: 2.00, // $2.00 per billing period for pro users
+  BUFFER: 0.50, // Allow up to $0.50 over limit (soft blocking)
+};
+
+/**
+ * Calculate the cost of tokens based on Gemini pricing
+ */
+function calculateTokenCost(inputTokens: number, outputTokens: number): number {
+  const inputCost = (inputTokens / 1_000_000) * GEMINI_PRICING.INPUT_PER_MILLION;
+  const outputCost = (outputTokens / 1_000_000) * GEMINI_PRICING.OUTPUT_PER_MILLION;
+  return inputCost + outputCost;
+}
+
+/**
+ * Check if a user has exceeded token usage limits
+ * @param uid User ID
+ * @returns Object indicating if request is allowed and error message if not
+ */
+async function checkTokenLimit(uid: string): Promise<{
+  allowed: boolean;
+  error?: string;
+  remainingBudget?: number;
+}> {
+  try {
+    // Fetch user's subscription document
+    const subscriptionRef = db.collection("users").doc(uid).collection("subscription").doc("current");
+    const subscriptionDoc = await subscriptionRef.get();
+
+    // Default to free plan if no subscription exists
+    let plan = "free";
+    let status = "free";
+    let tokenUsage: {
+      inputTokens: number;
+      outputTokens: number;
+      totalCost: number;
+      lastResetAt: any;
+      lastUpdatedAt: Date;
+      isLimitReached: boolean;
+    } = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalCost: 0,
+      lastResetAt: null,
+      lastUpdatedAt: new Date(),
+      isLimitReached: false,
+    };
+    let currentPeriodEnd: any = null;
+
+    if (subscriptionDoc.exists) {
+      const data = subscriptionDoc.data();
+      plan = data?.plan || "free";
+      status = data?.status || "free";
+      currentPeriodEnd = data?.currentPeriodEnd;
+
+      // Initialize tokenUsage if it doesn't exist
+      if (data?.tokenUsage) {
+        tokenUsage = {
+          inputTokens: data.tokenUsage.inputTokens || 0,
+          outputTokens: data.tokenUsage.outputTokens || 0,
+          totalCost: data.tokenUsage.totalCost || 0,
+          lastResetAt: data.tokenUsage.lastResetAt,
+          lastUpdatedAt: data.tokenUsage.lastUpdatedAt?.toDate() || new Date(),
+          isLimitReached: data.tokenUsage.isLimitReached || false,
+        };
+      }
+    }
+
+    // Check if pro user's billing period has reset
+    const isPro = plan === "pro" && status === "active";
+    if (isPro && currentPeriodEnd) {
+      const periodEndDate = currentPeriodEnd.toDate();
+      const now = new Date();
+
+      if (now > periodEndDate) {
+        // Billing period has ended, reset token usage
+        logger.info("🔄 [checkTokenLimit] Pro user billing period ended, resetting token usage", {
+          uid,
+          periodEndDate: periodEndDate.toISOString(),
+          currentDate: now.toISOString(),
+        });
+
+        tokenUsage = {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalCost: 0,
+          lastResetAt: now,
+          lastUpdatedAt: now,
+          isLimitReached: false,
+        };
+
+        // Update in database
+        await subscriptionRef.update({
+          tokenUsage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalCost: 0,
+            lastResetAt: FieldValue.serverTimestamp(),
+            lastUpdatedAt: FieldValue.serverTimestamp(),
+            isLimitReached: false,
+          },
+        });
+      }
+    }
+
+    // Get token limit based on plan
+    const limit = isPro ? TOKEN_LIMITS.PRO : TOKEN_LIMITS.FREE;
+    const limitWithBuffer = limit + TOKEN_LIMITS.BUFFER;
+
+    // Check if user has exceeded limit (including buffer)
+    if (tokenUsage.totalCost >= limitWithBuffer) {
+      const resetMessage = isPro ?
+        "Your token limit will reset at the end of your billing period." :
+        "Upgrade to Pro for a higher token limit.";
+
+      return {
+        allowed: false,
+        error: `Token limit exceeded. You have used $${tokenUsage.totalCost.toFixed(4)} ` +
+          `of your $${limit.toFixed(2)} limit. ${resetMessage}`,
+        remainingBudget: 0,
+      };
+    }
+
+    const remainingBudget = limit - tokenUsage.totalCost;
+
+    logger.info("✅ [checkTokenLimit] Token limit check passed", {
+      uid,
+      plan,
+      isPro,
+      totalCost: tokenUsage.totalCost,
+      limit,
+      remainingBudget,
+    });
+
+    return {
+      allowed: true,
+      remainingBudget,
+    };
+  } catch (error) {
+    logger.error("❌ [checkTokenLimit] Error checking token limit:", error);
+    // Allow request to proceed if check fails (fail-open for better UX)
+    return {allowed: true};
+  }
+}
+
+/**
+ * Track token usage after an API call
+ * @param uid User ID
+ * @param inputTokens Number of input tokens used
+ * @param outputTokens Number of output tokens used
+ */
+async function trackTokenUsage(uid: string, inputTokens: number, outputTokens: number): Promise<void> {
+  try {
+    // Calculate cost
+    const cost = calculateTokenCost(inputTokens, outputTokens);
+
+    logger.info("💰 [trackTokenUsage] Tracking token usage", {
+      uid,
+      inputTokens,
+      outputTokens,
+      cost: `$${cost.toFixed(6)}`,
+    });
+
+    // Get current subscription data
+    const subscriptionRef = db.collection("users").doc(uid).collection("subscription").doc("current");
+    const subscriptionDoc = await subscriptionRef.get();
+
+    let plan = "free";
+    let status = "free";
+    let currentTokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalCost: 0,
+    };
+
+    if (subscriptionDoc.exists) {
+      const data = subscriptionDoc.data();
+      plan = data?.plan || "free";
+      status = data?.status || "free";
+
+      if (data?.tokenUsage) {
+        currentTokenUsage = {
+          inputTokens: data.tokenUsage.inputTokens || 0,
+          outputTokens: data.tokenUsage.outputTokens || 0,
+          totalCost: data.tokenUsage.totalCost || 0,
+        };
+      }
+    }
+
+    // Calculate new totals
+    const newInputTokens = currentTokenUsage.inputTokens + inputTokens;
+    const newOutputTokens = currentTokenUsage.outputTokens + outputTokens;
+    const newTotalCost = currentTokenUsage.totalCost + cost;
+
+    // Determine if limit is reached
+    const isPro = plan === "pro" && status === "active";
+    const limit = isPro ? TOKEN_LIMITS.PRO : TOKEN_LIMITS.FREE;
+    const isLimitReached = newTotalCost >= limit;
+
+    // Update subscription document
+    await subscriptionRef.set({
+      tokenUsage: {
+        inputTokens: newInputTokens,
+        outputTokens: newOutputTokens,
+        totalCost: newTotalCost,
+        lastResetAt: currentTokenUsage.inputTokens === 0 ?
+          FieldValue.serverTimestamp() :
+          subscriptionDoc.data()?.tokenUsage?.lastResetAt || null,
+        lastUpdatedAt: FieldValue.serverTimestamp(),
+        isLimitReached,
+      },
+    }, {merge: true});
+
+    logger.info("✅ [trackTokenUsage] Token usage updated successfully", {
+      uid,
+      newTotalCost: `$${newTotalCost.toFixed(6)}`,
+      limit: `$${limit.toFixed(2)}`,
+      isLimitReached,
+      percentUsed: `${((newTotalCost / limit) * 100).toFixed(1)}%`,
+    });
+  } catch (error) {
+    logger.error("❌ [trackTokenUsage] Error tracking token usage:", error);
+    // Don't throw - we don't want to fail the user's request if tracking fails
+  }
+}
+
+// ==========================================
 // Types and Enums (matching Firestore schema)
 // ==========================================
 
@@ -422,6 +664,37 @@ export const onUserCreate = beforeUserCreated(async (event) => {
       documentPath: `users/${user.uid}`,
     });
 
+    // Step 6: Initialize free subscription with token usage
+    logger.info(`🔄 [${functionName}] Step 6: Initializing free subscription with token usage...`);
+
+    const subscriptionRef = db.collection("users").doc(user.uid).collection("subscription").doc("current");
+    await subscriptionRef.set({
+      status: "free",
+      plan: "free",
+      billingCycle: null,
+      polarSubscriptionId: null,
+      polarCustomerId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+      tokenUsage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalCost: 0,
+        lastResetAt: null, // Free users never reset
+        lastUpdatedAt: FieldValue.serverTimestamp(),
+        isLimitReached: false,
+      },
+    });
+
+    logger.info(`✅ [${functionName}] Step 6 complete: Subscription initialized`, {
+      documentPath: `users/${user.uid}/subscription/current`,
+      plan: "free",
+      tokenLimit: "$0.13 (lifetime)",
+    });
+
     // Success summary
     const totalTime = Date.now() - startTime;
     logger.info("─".repeat(60));
@@ -462,6 +735,80 @@ export const onUserCreate = beforeUserCreated(async (event) => {
     return;
   }
 });
+
+// ==========================================
+// Webhook Helper Functions
+// ==========================================
+
+/**
+ * Check if a webhook event has already been processed (idempotency)
+ * @param userId User ID
+ * @param eventId Unique event ID from webhook
+ * @returns true if this is a new event, false if already processed
+ */
+async function checkEventIdempotency(userId: string, eventId: string): Promise<boolean> {
+  const functionName = "checkEventIdempotency";
+
+  logger.info(`🔍 [${functionName}] Checking idempotency for event: ${eventId}`);
+
+  const eventRef = db.collection("users").doc(userId).collection("webhookEvents").doc(eventId);
+  const eventDoc = await eventRef.get();
+
+  if (eventDoc.exists) {
+    logger.warn(`⚠️ [${functionName}] Duplicate event detected: ${eventId}`);
+    return false; // Already processed
+  }
+
+  // Mark as processing
+  await eventRef.set({
+    eventId,
+    processed: false,
+    receivedAt: FieldValue.serverTimestamp(),
+  });
+
+  logger.info(`✅ [${functionName}] Event is new and marked as processing: ${eventId}`);
+  return true; // OK to process
+}
+
+/**
+ * Create a notification for the user in Firestore
+ * @param userId User ID
+ * @param type Notification type
+ * @param title Notification title
+ * @param message Notification message
+ * @param severity Notification severity level
+ * @param metadata Optional metadata object
+ */
+async function createNotification(
+  userId: string,
+  type: string,
+  title: string,
+  message: string,
+  severity: string,
+  metadata?: any
+) {
+  const functionName = "createNotification";
+
+  logger.info(`📬 [${functionName}] Creating notification for user ${userId}`, {
+    type,
+    severity,
+    title,
+  });
+
+  const notificationRef = db.collection("users").doc(userId).collection("notifications").doc();
+
+  await notificationRef.set({
+    type,
+    title,
+    message,
+    severity,
+    read: false,
+    metadata: metadata || {},
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
+  logger.info(`✅ [${functionName}] Notification created successfully: ${notificationRef.id}`);
+}
 
 // ==========================================
 // Polar Payment Integration
@@ -697,6 +1044,18 @@ export const polarWebhook = onRequest(
         return;
       }
 
+      // Step 2.5: Check idempotency
+      logger.info(`🔐 [${functionName}] Step 2.5: Checking event idempotency...`);
+
+      const eventId = payload.id || svixId;
+      const isNewEvent = await checkEventIdempotency(userId, eventId);
+
+      if (!isNewEvent) {
+        logger.info(`✅ [${functionName}] Event already processed: ${eventId}`);
+        res.status(200).send("Event already processed");
+        return;
+      }
+
       // Step 3: Update Firestore based on event type
       logger.info(`💾 [${functionName}] Step 3: Updating Firestore...`);
 
@@ -706,102 +1065,303 @@ export const polarWebhook = onRequest(
         .collection("subscription")
         .doc("current");
 
-      switch (eventType) {
-      case "checkout.completed": {
-        logger.info(`✅ [${functionName}] Processing checkout.completed event`);
+      try {
+        switch (eventType) {
+        case "checkout.completed": {
+          logger.info(`✅ [${functionName}] Processing checkout.completed event`);
 
-        const subscription = eventData.subscription;
-        if (!subscription) {
-          logger.error(`❌ [${functionName}] No subscription data in checkout.completed`);
-          res.status(400).send("No subscription data");
+          const subscription = eventData.subscription;
+          if (!subscription) {
+            logger.error(`❌ [${functionName}] No subscription data in checkout.completed`);
+            res.status(400).send("No subscription data");
+            return;
+          }
+
+          const subscriptionData = {
+            status: "active",
+            plan: "pro",
+            billingCycle: subscription.recurring_interval === "month" ? "monthly" : "yearly",
+            polarSubscriptionId: subscription.id,
+            polarCustomerId: subscription.customer_id || null,
+            currentPeriodStart: subscription.current_period_start ?
+              Timestamp.fromDate(new Date(subscription.current_period_start)) : null,
+            currentPeriodEnd: subscription.current_period_end ?
+              Timestamp.fromDate(new Date(subscription.current_period_end)) : null,
+            cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            tokenUsage: {
+              inputTokens: 0,
+              outputTokens: 0,
+              totalCost: 0,
+              lastResetAt: FieldValue.serverTimestamp(),
+              lastUpdatedAt: FieldValue.serverTimestamp(),
+              isLimitReached: false,
+            },
+          };
+
+          await subscriptionRef.set(subscriptionData);
+
+          logger.info(`✅ [${functionName}] Subscription created`, {
+            userId,
+            plan: "pro",
+            billingCycle: subscriptionData.billingCycle,
+          });
+          break;
+        }
+
+        case "subscription.updated": {
+          logger.info(`✅ [${functionName}] Processing subscription.updated event`);
+
+          const subscription = eventData;
+          const updateData = {
+            status: subscription.status || "active",
+            currentPeriodStart: subscription.current_period_start ?
+              Timestamp.fromDate(new Date(subscription.current_period_start)) : null,
+            currentPeriodEnd: subscription.current_period_end ?
+              Timestamp.fromDate(new Date(subscription.current_period_end)) : null,
+            cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+            updatedAt: FieldValue.serverTimestamp(),
+          };
+
+          await subscriptionRef.update(updateData);
+
+          logger.info(`✅ [${functionName}] Subscription updated`, {
+            userId,
+            status: updateData.status,
+          });
+          break;
+        }
+
+        case "payment.failed":
+        case "invoice.payment_failed": {
+          logger.info(`✅ [${functionName}] Processing payment failure event`);
+
+          // Immediate downgrade
+          await subscriptionRef.update({
+            status: "payment_failed",
+            plan: "free",
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+
+          // Create notification
+          await createNotification(
+            userId,
+            "payment_failed",
+            "Payment Failed",
+            "Your payment could not be processed. Your account has been downgraded to " +
+            "the Free plan. Please update your payment method to restore Pro access.",
+            "error",
+            {reason: eventData.reason || eventData.failure_reason || "unknown"}
+          );
+
+          logger.info(`✅ [${functionName}] User downgraded due to payment failure`, {
+            userId,
+          });
+          break;
+        }
+
+        case "subscription.past_due": {
+          logger.info(`✅ [${functionName}] Processing past_due event`);
+
+          // Immediate downgrade (per user's choice)
+          await subscriptionRef.update({
+            status: "past_due",
+            plan: "free",
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+
+          await createNotification(
+            userId,
+            "payment_failed",
+            "Subscription Past Due",
+            "Your subscription payment is past due. Please update your payment method.",
+            "error"
+          );
+
+          logger.info(`✅ [${functionName}] Subscription marked as past_due`, {
+            userId,
+          });
+          break;
+        }
+
+        case "customer.source.expiring":
+        case "payment_method.expiring": {
+          logger.info(`✅ [${functionName}] Processing card expiring warning`);
+
+          await createNotification(
+            userId,
+            "card_expiring",
+            "Payment Method Expiring Soon",
+            "Your payment method will expire soon. Please update it to avoid service interruption.",
+            "warning",
+            {
+              expiryDate: eventData.expiry_date,
+              last4: eventData.last4,
+            }
+          );
+
+          logger.info(`✅ [${functionName}] Card expiring notification sent`, {
+            userId,
+          });
+          break;
+        }
+
+        case "charge.refunded": {
+          logger.info(`✅ [${functionName}] Processing refund event`);
+
+          // Downgrade on refund
+          await subscriptionRef.update({
+            status: "refunded",
+            plan: "free",
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+
+          await createNotification(
+            userId,
+            "refund_issued",
+            "Refund Processed",
+            "Your subscription has been refunded and your account has been downgraded to Free.",
+            "info",
+            {
+              amount: eventData.amount,
+              refundId: eventData.id,
+            }
+          );
+
+          logger.info(`✅ [${functionName}] Refund processed and user downgraded`, {
+            userId,
+          });
+          break;
+        }
+
+        case "subscription.plan_changed": {
+          logger.info(`✅ [${functionName}] Processing subscription plan change`);
+
+          const subscription = eventData;
+          const newBillingCycle = subscription.recurring_interval === "month" ? "monthly" : "yearly";
+
+          await subscriptionRef.update({
+            status: subscription.status || "active",
+            billingCycle: newBillingCycle,
+            currentPeriodStart: subscription.current_period_start ?
+              Timestamp.fromDate(new Date(subscription.current_period_start)) : null,
+            currentPeriodEnd: subscription.current_period_end ?
+              Timestamp.fromDate(new Date(subscription.current_period_end)) : null,
+            cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+
+          // Notify about plan change
+          await createNotification(
+            userId,
+            "plan_changed",
+            "Subscription Plan Updated",
+            `Your billing cycle has been changed to ${newBillingCycle}.`,
+            "success",
+            {billingCycle: newBillingCycle}
+          );
+
+          logger.info(`✅ [${functionName}] Plan changed successfully`, {
+            userId,
+            newBillingCycle,
+          });
+          break;
+        }
+
+        case "checkout.failed": {
+          logger.info(`✅ [${functionName}] Processing checkout failed event`);
+
+          await createNotification(
+            userId,
+            "payment_failed",
+            "Checkout Failed",
+            "There was an issue processing your checkout. Please try again or contact support.",
+            "error",
+            {
+              reason: eventData.failure_reason || eventData.reason,
+              checkoutId: eventData.id,
+            }
+          );
+
+          logger.info(`✅ [${functionName}] Checkout failed notification sent`, {
+            userId,
+          });
+          break;
+        }
+
+        case "subscription.canceled": {
+          logger.info(`✅ [${functionName}] Processing subscription.canceled event`);
+
+          const updateData = {
+            status: "canceled",
+            plan: "free",
+            cancelAtPeriodEnd: false,
+            updatedAt: FieldValue.serverTimestamp(),
+          };
+
+          await subscriptionRef.update(updateData);
+
+          await createNotification(
+            userId,
+            "subscription_canceled",
+            "Subscription Canceled",
+            "Your subscription has been canceled. You can resubscribe at any time from the Plans page.",
+            "info"
+          );
+
+          logger.info(`✅ [${functionName}] Subscription canceled`, {
+            userId,
+          });
+          break;
+        }
+
+        default:
+          logger.info(`⚠️ [${functionName}] Unhandled event type: ${eventType}`);
+          res.status(200).send("Event type not handled");
           return;
         }
 
-        const subscriptionData = {
-          status: "active",
-          plan: "pro",
-          billingCycle: subscription.recurring_interval === "month" ? "monthly" : "yearly",
-          polarSubscriptionId: subscription.id,
-          polarCustomerId: subscription.customer_id || null,
-          currentPeriodStart: subscription.current_period_start ?
-            Timestamp.fromDate(new Date(subscription.current_period_start)) : null,
-          currentPeriodEnd: subscription.current_period_end ?
-            Timestamp.fromDate(new Date(subscription.current_period_end)) : null,
-          cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
-          createdAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        await subscriptionRef.set(subscriptionData);
-
-        logger.info(`✅ [${functionName}] Subscription created`, {
-          userId,
-          plan: "pro",
-          billingCycle: subscriptionData.billingCycle,
+        // Mark event as successfully processed
+        await db.collection("users").doc(userId).collection("webhookEvents").doc(eventId).update({
+          processed: true,
+          processedAt: FieldValue.serverTimestamp(),
+          eventType: eventType,
         });
-        break;
-      }
 
-      case "subscription.updated": {
-        logger.info(`✅ [${functionName}] Processing subscription.updated event`);
+        logger.info(`✅ [${functionName}] Event marked as processed: ${eventId}`);
 
-        const subscription = eventData;
-        const updateData = {
-          status: subscription.status || "active",
-          currentPeriodStart: subscription.current_period_start ?
-            Timestamp.fromDate(new Date(subscription.current_period_start)) : null,
-          currentPeriodEnd: subscription.current_period_end ?
-            Timestamp.fromDate(new Date(subscription.current_period_end)) : null,
-          cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
-          updatedAt: FieldValue.serverTimestamp(),
-        };
+        const totalTime = Date.now() - startTime;
 
-        await subscriptionRef.update(updateData);
-
-        logger.info(`✅ [${functionName}] Subscription updated`, {
+        logger.info("─".repeat(60));
+        logger.info(`✅ [${functionName}] WEBHOOK PROCESSED SUCCESSFULLY`);
+        logger.info("─".repeat(60));
+        logger.info(`📤 [${functionName}] Summary:`, {
+          eventType,
           userId,
-          status: updateData.status,
+          eventId,
+          totalExecutionTimeMs: totalTime,
         });
-        break;
-      }
+        logger.info("═".repeat(60));
 
-      case "subscription.canceled": {
-        logger.info(`✅ [${functionName}] Processing subscription.canceled event`);
-
-        const updateData = {
-          status: "canceled",
-          plan: "free",
-          cancelAtPeriodEnd: false,
-          updatedAt: FieldValue.serverTimestamp(),
-        };
-
-        await subscriptionRef.update(updateData);
-
-        logger.info(`✅ [${functionName}] Subscription canceled`, {
+        res.status(200).send("Webhook processed");
+      } catch (processingError: any) {
+        // Log error for debugging
+        logger.error(`❌ [${functionName}] Error processing event:`, {
+          eventId,
+          eventType,
           userId,
+          error: processingError.message,
         });
-        break;
+
+        await db.collection("users").doc(userId).collection("webhookEvents").doc(eventId).update({
+          processed: false,
+          error: processingError.message,
+          failedAt: FieldValue.serverTimestamp(),
+        });
+
+        throw processingError;
       }
-
-      default:
-        logger.info(`⚠️ [${functionName}] Unhandled event type: ${eventType}`);
-        res.status(200).send("Event type not handled");
-        return;
-      }
-
-      const totalTime = Date.now() - startTime;
-
-      logger.info("─".repeat(60));
-      logger.info(`✅ [${functionName}] WEBHOOK PROCESSED SUCCESSFULLY`);
-      logger.info("─".repeat(60));
-      logger.info(`📤 [${functionName}] Summary:`, {
-        eventType,
-        userId,
-        totalExecutionTimeMs: totalTime,
-      });
-      logger.info("═".repeat(60));
-
-      res.status(200).send("Webhook processed");
     } catch (error: any) {
       const totalTime = Date.now() - startTime;
 
@@ -1178,8 +1738,23 @@ export const geminiProxy = onCall(
 
     logger.info(`✅ [${functionName}] Rate limits passed`);
 
-    // Step 3: Validate request parameters
-    logger.info(`📥 [${functionName}] Step 3: Validating request parameters...`);
+    // Step 3: Check token usage limits
+    logger.info(`💰 [${functionName}] Step 3: Checking token usage limits...`);
+
+    const tokenLimitResult = await checkTokenLimit(request.auth.uid);
+    if (!tokenLimitResult.allowed) {
+      logger.error(`❌ [${functionName}] Token limit exceeded for user: ${request.auth.uid}`);
+      logger.error(`❌ [${functionName}] ${tokenLimitResult.error}`);
+      logger.info(`⏱️ [${functionName}] Execution time: ${Date.now() - startTime}ms (TOKEN LIMIT EXCEEDED)`);
+      throw new HttpsError("resource-exhausted", tokenLimitResult.error!);
+    }
+
+    logger.info(`✅ [${functionName}] Token limits passed`, {
+      remainingBudget: `$${tokenLimitResult.remainingBudget?.toFixed(4) || "0.0000"}`,
+    });
+
+    // Step 4: Validate request parameters
+    logger.info(`📥 [${functionName}] Step 4: Validating request parameters...`);
 
     const {action, payload} = request.data;
 
@@ -1197,8 +1772,8 @@ export const geminiProxy = onCall(
 
     logger.info(`✅ [${functionName}] Request parameters validated - Action: "${action}"`);
 
-    // Step 4: Retrieve API key from secrets
-    logger.info(`🔑 [${functionName}] Step 4: Retrieving Gemini API key from secrets...`);
+    // Step 5: Retrieve API key from secrets
+    logger.info(`🔑 [${functionName}] Step 5: Retrieving Gemini API key from secrets...`);
 
     const apiKey = geminiApiKey.value();
 
@@ -1211,20 +1786,20 @@ export const geminiProxy = onCall(
 
     logger.info(`✅ [${functionName}] API key retrieved successfully (length: ${apiKey.length} chars)`);
 
-    // Step 5: Initialize Gemini AI
-    logger.info(`🤖 [${functionName}] Step 5: Initializing Google Generative AI client...`);
+    // Step 6: Initialize Gemini AI
+    logger.info(`🤖 [${functionName}] Step 6: Initializing Google Generative AI client...`);
 
     const initStartTime = Date.now();
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({model: "gemini-pro"});
+    const model = genAI.getGenerativeModel({model: "gemini-1.5-flash-latest"});
 
     logger.info(`✅ [${functionName}] Gemini AI client initialized`, {
-      model: "gemini-pro",
+      model: "gemini-1.5-flash-latest",
       initTimeMs: Date.now() - initStartTime,
     });
 
-    // Step 6: Route to appropriate handler
-    logger.info(`🔄 [${functionName}] Step 6: Routing to action handler: "${action}"`);
+    // Step 7: Route to appropriate handler
+    logger.info(`🔄 [${functionName}] Step 7: Routing to action handler: "${action}"`);
 
     try {
       let result;
@@ -1263,6 +1838,16 @@ export const geminiProxy = onCall(
       const handlerTime = Date.now() - handlerStartTime;
       const totalTime = Date.now() - startTime;
 
+      // Step 8: Track token usage
+      if (result?.tokenUsage) {
+        logger.info(`💰 [${functionName}] Step 8: Tracking token usage...`);
+        await trackTokenUsage(
+          request.auth.uid,
+          result.tokenUsage.inputTokens,
+          result.tokenUsage.outputTokens
+        );
+      }
+
       // Success summary
       logger.info("─".repeat(60));
       logger.info(`✅ [${functionName}] REQUEST COMPLETED SUCCESSFULLY`);
@@ -1274,6 +1859,7 @@ export const geminiProxy = onCall(
         handlerTimeMs: handlerTime,
         totalTimeMs: totalTime,
         success: result?.success || false,
+        tokensUsed: result?.tokenUsage?.totalTokens || 0,
       });
       logger.info(`⏱️ [${functionName}] Total execution time: ${totalTime}ms`);
       logger.info("═".repeat(60));
@@ -1384,15 +1970,27 @@ Return ONLY the JSON array, no markdown or explanation.`;
     apiResponseTimeMs: apiTime,
   });
 
-  // Step 4: Extract response text
-  logger.info(`📥 [${handlerName}] Step 4: Extracting response text...`);
+  // Step 4: Extract response text and token usage
+  logger.info(`📥 [${handlerName}] Step 4: Extracting response text and token usage...`);
 
   const response = result.response;
   const text = response.text();
 
+  // Extract token usage metadata
+  const usageMetadata = response.usageMetadata || {};
+  const inputTokens = usageMetadata.promptTokenCount || 0;
+  const outputTokens = usageMetadata.candidatesTokenCount || 0;
+  const totalTokens = usageMetadata.totalTokenCount || 0;
+
   logger.info(`✅ [${handlerName}] Response text extracted`, {
     responseLength: text.length,
     previewFirst100: text.substring(0, 100) + "...",
+  });
+
+  logger.info(`📊 [${handlerName}] Token usage:`, {
+    inputTokens,
+    outputTokens,
+    totalTokens,
   });
 
   // Step 5: Parse JSON response
@@ -1434,7 +2032,7 @@ Return ONLY the JSON array, no markdown or explanation.`;
       totalHandlerTimeMs: totalTime,
     });
 
-    return {success: true, data: categories};
+    return {success: true, data: categories, tokenUsage: {inputTokens, outputTokens, totalTokens}};
   } catch (parseError) {
     const totalTime = Date.now() - startTime;
 
@@ -1517,15 +2115,27 @@ Return ONLY the JSON object, no markdown or explanation.`;
     apiResponseTimeMs: apiTime,
   });
 
-  // Step 4: Extract response text
-  logger.info(`📥 [${handlerName}] Step 4: Extracting response text...`);
+  // Step 4: Extract response text and token usage
+  logger.info(`📥 [${handlerName}] Step 4: Extracting response text and token usage...`);
 
   const response = result.response;
   const text = response.text();
 
+  // Extract token usage metadata
+  const usageMetadata = response.usageMetadata || {};
+  const inputTokens = usageMetadata.promptTokenCount || 0;
+  const outputTokens = usageMetadata.candidatesTokenCount || 0;
+  const totalTokens = usageMetadata.totalTokenCount || 0;
+
   logger.info(`✅ [${handlerName}] Response text extracted`, {
     responseLength: text.length,
     previewFirst100: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
+  });
+
+  logger.info(`📊 [${handlerName}] Token usage:`, {
+    inputTokens,
+    outputTokens,
+    totalTokens,
   });
 
   // Step 5: Parse JSON response
@@ -1557,7 +2167,7 @@ Return ONLY the JSON object, no markdown or explanation.`;
       totalHandlerTimeMs: totalTime,
     });
 
-    return {success: true, data: analysis};
+    return {success: true, data: analysis, tokenUsage: {inputTokens, outputTokens, totalTokens}};
   } catch (parseError) {
     const totalTime = Date.now() - startTime;
 
@@ -1642,7 +2252,7 @@ async function handleChatResponse(model: any, payload: {
   // Step 3: Build chat history
   logger.info(`🔄 [${handlerName}] Step 3: Building chat history...`);
 
-  const history = messages.map((msg, index) => {
+  let history = messages.map((msg, index) => {
     const formattedMsg = {
       role: msg.role === "user" ? "user" : "model",
       parts: [{text: msg.text || ""}],
@@ -1653,6 +2263,13 @@ async function handleChatResponse(model: any, payload: {
     );
     return formattedMsg;
   });
+
+  // Gemini requires chat history to start with a user message
+  // Remove any leading model messages
+  while (history.length > 0 && history[0].role === "model") {
+    logger.info(`  ⚠️ [${handlerName}] Removing leading model message from history`);
+    history = history.slice(1);
+  }
 
   logger.info(`✅ [${handlerName}] Chat history built`, {
     totalMessages: history.length,
@@ -1669,7 +2286,10 @@ async function handleChatResponse(model: any, payload: {
 
   const chat = model.startChat({
     history,
-    systemInstruction: effectiveSystemPrompt,
+    systemInstruction: {
+      parts: [{text: effectiveSystemPrompt}],
+      role: "user",
+    },
     tools: geminiTools,
   });
 
@@ -1684,10 +2304,22 @@ async function handleChatResponse(model: any, payload: {
   const apiTime = Date.now() - apiStartTime;
   const response = result.response;
 
+  // Extract token usage metadata
+  const usageMetadata = response.usageMetadata || {};
+  const inputTokens = usageMetadata.promptTokenCount || 0;
+  const outputTokens = usageMetadata.candidatesTokenCount || 0;
+  const totalTokens = usageMetadata.totalTokenCount || 0;
+
   logger.info(`✅ [${handlerName}] Gemini response received`, {
     apiResponseTimeMs: apiTime,
     hasCandidates: !!response.candidates,
     candidateCount: response.candidates?.length || 0,
+  });
+
+  logger.info(`📊 [${handlerName}] Token usage:`, {
+    inputTokens,
+    outputTokens,
+    totalTokens,
   });
 
   // Step 6: Check for function calls
@@ -1733,6 +2365,7 @@ async function handleChatResponse(model: any, payload: {
         functionCalls: formattedCalls,
         candidates: response.candidates,
       },
+      tokenUsage: {inputTokens, outputTokens, totalTokens},
     };
   }
 
@@ -1759,6 +2392,7 @@ async function handleChatResponse(model: any, payload: {
       text: responseText,
       candidates: response.candidates,
     },
+    tokenUsage: {inputTokens, outputTokens, totalTokens},
   };
 }
 
@@ -1796,7 +2430,7 @@ async function handleFollowUpResponse(model: any, payload: {
   // Step 2: Build base chat history
   logger.info(`🔄 [${handlerName}] Step 2: Building base chat history from messages...`);
 
-  const history: any[] = messages.map((msg, index) => {
+  let history: any[] = messages.map((msg, index) => {
     const formattedMsg = {
       role: msg.role === "user" ? "user" : "model",
       parts: [{text: msg.text || ""}],
@@ -1804,6 +2438,13 @@ async function handleFollowUpResponse(model: any, payload: {
     logger.info(`  📜 [${handlerName}] Base message ${index + 1}: role="${formattedMsg.role}"`);
     return formattedMsg;
   });
+
+  // Gemini requires chat history to start with a user message
+  // Remove any leading model messages
+  while (history.length > 0 && history[0].role === "model") {
+    logger.info(`  ⚠️ [${handlerName}] Removing leading model message from history`);
+    history = history.slice(1);
+  }
 
   logger.info(`✅ [${handlerName}] Base history built with ${history.length} messages`);
 
@@ -1877,7 +2518,10 @@ async function handleFollowUpResponse(model: any, payload: {
 
   const chat = model.startChat({
     history,
-    systemInstruction: effectiveSystemPrompt,
+    systemInstruction: {
+      parts: [{text: effectiveSystemPrompt}],
+      role: "user",
+    },
   });
 
   logger.info(`✅ [${handlerName}] Chat session created`);
@@ -1891,8 +2535,20 @@ async function handleFollowUpResponse(model: any, payload: {
   const apiTime = Date.now() - apiStartTime;
   const response = result.response;
 
+  // Extract token usage metadata
+  const usageMetadata = response.usageMetadata || {};
+  const inputTokens = usageMetadata.promptTokenCount || 0;
+  const outputTokens = usageMetadata.candidatesTokenCount || 0;
+  const totalTokens = usageMetadata.totalTokenCount || 0;
+
   logger.info(`✅ [${handlerName}] Gemini follow-up response received`, {
     apiResponseTimeMs: apiTime,
+  });
+
+  logger.info(`📊 [${handlerName}] Token usage:`, {
+    inputTokens,
+    outputTokens,
+    totalTokens,
   });
 
   // Step 8: Extract and return response
@@ -1917,6 +2573,7 @@ async function handleFollowUpResponse(model: any, payload: {
     data: {
       text: responseText,
     },
+    tokenUsage: {inputTokens, outputTokens, totalTokens},
   };
 }
 
@@ -1935,7 +2592,7 @@ export const cleanupOldChatMessages = onSchedule(
     schedule: "every 24 hours",
     timeZone: "America/New_York",
   },
-  async (event) => {
+  async () => {
     const functionName = "cleanupOldChatMessages";
     const startTime = Date.now();
 

@@ -37,6 +37,14 @@ export const getSubscriptionStatus = async (uid: string): Promise<SubscriptionDo
         cancelAtPeriodEnd: false,
         createdAt: new Date(),
         updatedAt: new Date(),
+        tokenUsage: {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalCost: 0,
+          lastResetAt: null,
+          lastUpdatedAt: new Date(),
+          isLimitReached: false,
+        },
       };
     }
     
@@ -52,6 +60,14 @@ export const getSubscriptionStatus = async (uid: string): Promise<SubscriptionDo
       cancelAtPeriodEnd: data.cancelAtPeriodEnd,
       createdAt: data.createdAt?.toDate() || new Date(),
       updatedAt: data.updatedAt?.toDate() || new Date(),
+      tokenUsage: data.tokenUsage ? {
+        inputTokens: data.tokenUsage.inputTokens || 0,
+        outputTokens: data.tokenUsage.outputTokens || 0,
+        totalCost: data.tokenUsage.totalCost || 0,
+        lastResetAt: data.tokenUsage.lastResetAt?.toDate() || null,
+        lastUpdatedAt: data.tokenUsage.lastUpdatedAt?.toDate() || new Date(),
+        isLimitReached: data.tokenUsage.isLimitReached || false,
+      } : undefined,
     };
   } catch (error) {
     console.error('Error fetching subscription status:', error);
@@ -101,6 +117,14 @@ export const subscribeToSubscription = (
           cancelAtPeriodEnd: false,
           createdAt: new Date(),
           updatedAt: new Date(),
+          tokenUsage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            totalCost: 0,
+            lastResetAt: null,
+            lastUpdatedAt: new Date(),
+            isLimitReached: false,
+          },
         });
         return;
       }
@@ -117,6 +141,14 @@ export const subscribeToSubscription = (
         cancelAtPeriodEnd: data.cancelAtPeriodEnd,
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
+        tokenUsage: data.tokenUsage ? {
+          inputTokens: data.tokenUsage.inputTokens || 0,
+          outputTokens: data.tokenUsage.outputTokens || 0,
+          totalCost: data.tokenUsage.totalCost || 0,
+          lastResetAt: data.tokenUsage.lastResetAt?.toDate() || null,
+          lastUpdatedAt: data.tokenUsage.lastUpdatedAt?.toDate() || new Date(),
+          isLimitReached: data.tokenUsage.isLimitReached || false,
+        } : undefined,
       });
     },
     (error) => {

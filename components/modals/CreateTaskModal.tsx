@@ -5,6 +5,7 @@ import { X, ChevronDown, Save, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import { analyzeTask } from '../../services/aiService';
 import { DEBUG_FLAGS } from '../../config/debugFlags';
 import { useSubscription } from '../../hooks/useSubscription';
+import { useThrottle } from '../../hooks/useDebounce';
 
 interface CreateTaskModalProps {
   isOpen: boolean;
@@ -34,7 +35,7 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
   const [isHabit, setIsHabit] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [isAuditing, setIsAuditing] = useState(false);
-  const { requirePro } = useSubscription();
+  const { requireAIAccess } = useSubscription();
 
   useEffect(() => {
     if (isOpen) {
@@ -55,12 +56,12 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
     }
   }, [isOpen, editingTask]);
 
-  // Use AI to analyze task and suggest properties
-  const handleSmartAudit = async () => {
+  // Internal function to execute AI task analysis
+  const executeSmartAudit = async () => {
     if (!title.trim()) return;
     
-    // Check Pro access before making AI call
-    if (!requirePro('AI Task Analysis')) {
+    // Check AI access before making AI call (Pro OR free with credits)
+    if (!requireAIAccess('AI Task Analysis')) {
       return;
     }
     
@@ -76,6 +77,9 @@ const CreateTaskModal: React.FC<CreateTaskModalProps> = ({
       setIsAuditing(false);
     }
   };
+
+  // Throttled version to prevent spamming (300ms cooldown)
+  const handleSmartAudit = useThrottle(executeSmartAudit, 300);
 
   if (!isOpen) return null;
 

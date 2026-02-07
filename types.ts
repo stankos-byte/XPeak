@@ -110,6 +110,9 @@ export interface UserProfile {
   history: DailyActivity[]; // Changed to daily aggregates
   identity: string;
   // goals and templates moved to subcollections for scalability
+  // but included in the runtime object for component compatibility
+  goals?: Goal[];
+  templates?: TaskTemplate[];
   layout?: ProfileLayout;
 }
 
@@ -186,9 +189,18 @@ export interface ChatMessage {
 // Subscription types
 // ============================================
 
-export type SubscriptionStatus = 'free' | 'active' | 'canceled' | 'past_due';
+export type SubscriptionStatus = 'free' | 'active' | 'canceled' | 'past_due' | 'payment_failed' | 'refunded';
 export type SubscriptionPlan = 'free' | 'pro';
 export type BillingCycle = 'monthly' | 'yearly' | null;
+
+export interface TokenUsage {
+  inputTokens: number;        // Total input tokens used
+  outputTokens: number;       // Total output tokens used
+  totalCost: number;          // Total cost in USD
+  lastResetAt: Date | null;   // When usage was last reset (null for free users)
+  lastUpdatedAt: Date;        // Last usage update timestamp
+  isLimitReached: boolean;    // Quick flag for limit checking
+}
 
 export interface SubscriptionDocument {
   status: SubscriptionStatus;
@@ -201,6 +213,42 @@ export interface SubscriptionDocument {
   cancelAtPeriodEnd: boolean;
   createdAt: Date;
   updatedAt: Date;
+  tokenUsage?: TokenUsage;
+}
+
+// ============================================
+// Notification types
+// ============================================
+
+export type NotificationType = 
+  | 'payment_failed' 
+  | 'card_expiring' 
+  | 'subscription_canceled' 
+  | 'refund_issued' 
+  | 'plan_changed';
+
+export type NotificationSeverity = 'info' | 'warning' | 'error' | 'success';
+
+export interface NotificationDocument {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  severity: NotificationSeverity;
+  read: boolean;
+  actionUrl?: string;
+  actionLabel?: string;
+  metadata?: Record<string, any>;
+  createdAt: Date;
+}
+
+export interface WebhookEventLog {
+  eventId: string; // For idempotency
+  eventType: string;
+  processed: boolean;
+  processedAt?: Date;
+  payload?: any;
+  error?: string;
 }
 
 // ============================================
@@ -290,3 +338,28 @@ export const getQuestCompletionPercent = (quest: MainQuest): number => {
   
   return total > 0 ? Math.round((completed / total) * 100) : 0;
 };
+
+// ==========================================
+// Maintenance Mode Configuration
+// ==========================================
+
+/**
+ * Maintenance mode configuration stored in Firestore
+ * Path: config/maintenance
+ */
+export interface MaintenanceConfig {
+  /** Whether maintenance mode is currently active */
+  isMaintenanceMode: boolean;
+  
+  /** Title to display on maintenance page */
+  title: string;
+  
+  /** Subtitle/message to display on maintenance page */
+  subtitle: string;
+  
+  /** Optional scheduled end date for maintenance */
+  date?: string;
+  
+  /** Last time this config was updated */
+  lastUpdatedAt: Date | string;
+}

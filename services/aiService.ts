@@ -104,6 +104,9 @@ export const generateQuest = async (questTitle: string): Promise<Array<{
     if (error.code === "permission-denied") {
       throw new Error("You don't have permission to use this feature");
     }
+    if (error.code === "resource-exhausted") {
+      throw new Error("Token limit reached. Please check your usage in Settings or upgrade your plan.");
+    }
     
     throw error;
   }
@@ -149,6 +152,9 @@ export const analyzeTask = async (taskTitle: string): Promise<{
     }
     if (error.code === "permission-denied") {
       throw new Error("You don't have permission to use this feature");
+    }
+    if (error.code === "resource-exhausted") {
+      throw new Error("Token limit reached. Please check your usage in Settings or upgrade your plan.");
     }
     
     throw error;
@@ -308,6 +314,9 @@ export const generateChatResponse = async (
     if (error.code === "permission-denied") {
       throw new Error("You don't have permission to use this feature");
     }
+    if (error.code === "resource-exhausted") {
+      throw new Error("Token limit reached. Please check your usage in Settings or upgrade your plan.");
+    }
     
     throw error;
   }
@@ -357,6 +366,9 @@ export const generateFollowUpResponse = async (
     }
     if (error.code === "permission-denied") {
       throw new Error("You don't have permission to use this feature");
+    }
+    if (error.code === "resource-exhausted") {
+      throw new Error("Token limit reached. Please check your usage in Settings or upgrade your plan.");
     }
     
     throw error;

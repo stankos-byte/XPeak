@@ -77,6 +77,18 @@ service cloud.firestore {
         allow write: if false; // Only Cloud Functions can write
       }
       
+      // Notifications subcollection - owner can read and update (mark as read), only Cloud Functions can create/delete
+      match /notifications/{notificationId} {
+        allow read: if isOwner(userId);
+        allow update: if isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        allow create, delete: if false; // Only Cloud Functions can create/delete
+      }
+      
+      // Webhook Events subcollection - only Cloud Functions can access (for debugging/audit)
+      match /webhookEvents/{eventId} {
+        allow read, write: if false; // Only Cloud Functions can access
+      }
+      
       // Goals subcollection - only owner can read/write
       match /goals/{goalId} {
         allow read, write: if isOwner(userId);
@@ -135,6 +147,24 @@ service cloud.firestore {
       // Only creator can delete (cancel) the challenge
       allow delete: if isAuthenticated() 
                     && resource.data.creatorUID == request.auth.uid;
+    }
+    
+    // ==========================================
+    // CONFIG COLLECTION
+    // ==========================================
+    match /config/{document} {
+      // Maintenance document - public read access, admin write only
+      match /maintenance {
+        // Allow anyone to read maintenance status (even unauthenticated)
+        allow read: if true;
+        
+        // Only allow writes from Cloud Functions/Admin SDK
+        // (In production, you'd set this via admin panel or cloud functions)
+        allow write: if false;
+      }
+      
+      // Default: deny access to other config documents
+      allow read, write: if false;
     }
   }
 }

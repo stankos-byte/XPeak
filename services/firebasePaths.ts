@@ -26,6 +26,7 @@ export const COLLECTIONS = {
   USERS: 'users',
   CHALLENGES: 'challenges',
   FRIEND_REQUESTS: 'friendRequests',
+  CONFIG: 'config',
 } as const;
 
 export const USER_SUBCOLLECTIONS = {
@@ -39,6 +40,8 @@ export const USER_SUBCOLLECTIONS = {
   SUBSCRIPTION: 'subscription',
   GOALS: 'goals',
   TEMPLATES: 'templates',
+  NOTIFICATIONS: 'notifications',
+  WEBHOOK_EVENTS: 'webhookEvents',
 } as const;
 
 // ============================================
@@ -100,6 +103,9 @@ export const paths = {
   // Top-level collection paths
   challenge: (challengeId: string) => `${COLLECTIONS.CHALLENGES}/${challengeId}`,
   friendRequest: (requestId: string) => `${COLLECTIONS.FRIEND_REQUESTS}/${requestId}`,
+  
+  // Config paths
+  configMaintenance: () => `${COLLECTIONS.CONFIG}/maintenance`,
 } as const;
 
 // ============================================
@@ -300,6 +306,34 @@ class FirebasePathsService {
   /** Get specific template document reference */
   templateDoc(uid: string, templateId: string): DocumentReference {
     return doc(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.TEMPLATES, templateId);
+  }
+
+  // ==========================================
+  // Notifications
+  // ==========================================
+
+  /** Get user's notifications collection reference */
+  notificationsCollection(uid: string): CollectionReference {
+    return collection(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.NOTIFICATIONS);
+  }
+
+  /** Get specific notification document reference */
+  notificationDoc(uid: string, notificationId: string): DocumentReference {
+    return doc(this.ensureDb(), COLLECTIONS.USERS, uid, USER_SUBCOLLECTIONS.NOTIFICATIONS, notificationId);
+  }
+
+  // ==========================================
+  // Config
+  // ==========================================
+
+  /** Get config collection reference */
+  configCollection(): CollectionReference {
+    return collection(this.ensureDb(), COLLECTIONS.CONFIG);
+  }
+
+  /** Get maintenance config document reference */
+  maintenanceDoc(): DocumentReference {
+    return doc(this.ensureDb(), COLLECTIONS.CONFIG, 'maintenance');
   }
 }
 

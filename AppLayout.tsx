@@ -16,6 +16,7 @@ import SimpleInputModal from './components/modals/SimpleInputModal';
 import DeleteConfirmModal from './components/modals/DeleteConfirmModal';
 import FeedbackModal from './components/modals/FeedbackModal';
 import CreateChallengeModal from './components/modals/CreateChallengeModal';
+import EmailVerificationBanner from './components/EmailVerificationBanner';
 import DashboardView from './pages/app/Dashboard';
 import QuestsView from './pages/app/Quests';
 import ProfileView from './pages/app/Profile';
@@ -193,7 +194,11 @@ const App: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-background text-gray-100 flex flex-col md:flex-row font-sans">
+    <div className="min-h-screen bg-background text-gray-100 flex flex-col font-sans">
+      {/* Email Verification Banner */}
+      <EmailVerificationBanner />
+      
+      <div className="flex flex-col md:flex-row flex-1">
       <nav className="hidden md:flex w-24 lg:w-72 bg-background border-r border-secondary/10 flex-col py-10 sticky top-0 h-screen z-20 justify-between">
         <div className="flex flex-col items-center lg:items-start px-0 lg:px-10 w-full">
           <div className="flex items-center gap-3 mb-16 text-primary"><Swords size={40} /><span className="hidden lg:block text-3xl font-black uppercase tracking-tighter italic">XPeak</span></div>
@@ -204,7 +209,7 @@ const App: React.FC = () => {
           ))}</div>
         </div>
         
-        <div className="w-full px-0 lg:px-10 mt-auto">
+        <div className="w-full px-0 lg:px-10 mt-auto space-y-2">
            <button onClick={() => setIsFeedbackOpen(true)} className="w-full flex items-center justify-center lg:justify-start gap-4 p-5 rounded-2xl transition-all border text-secondary border-transparent hover:bg-surface hover:text-gray-100">
               <MessageSquare size={26} /><span className="hidden lg:block font-black uppercase tracking-widest text-xs">Feedback</span>
            </button>
@@ -299,7 +304,7 @@ const App: React.FC = () => {
       </main>
 
       {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-b border-secondary/20 p-4 flex items-center justify-center z-50">
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-surface/95 backdrop-blur-xl border-b border-secondary/20 p-4 flex items-center justify-between z-50">
         <div className="flex items-center gap-3">
           <Swords size={28} className="text-primary" />
           <span className="text-xl font-black uppercase tracking-tighter italic text-primary">XPeak</span>
@@ -414,6 +419,7 @@ const App: React.FC = () => {
           <p className="text-3xl text-white font-black uppercase tracking-widest">Performance Level {userManager.showLevelUp.level} Achieved</p>
         </div>
       )}
+      </div>
     </div>
   );
 };

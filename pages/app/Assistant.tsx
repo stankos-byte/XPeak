@@ -1,11 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command, Lock } from 'lucide-react';
+import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command, Lock, AlertTriangle } from 'lucide-react';
 import { UserProfile, Task, MainQuest, FriendChallenge, Friend, Difficulty, SkillCategory, ChatMessage } from '../../types';
 import { generateChatResponse, generateFollowUpResponse } from '../../services/aiService';
 import { DEBUG_FLAGS } from '../../config/debugFlags';
 import { useSubscription } from '../../hooks/useSubscription';
 import { useNavigate } from 'react-router-dom';
+import { useThrottle } from '../../hooks/useDebounce';
+import { getUsageSummary } from '../../services/tokenService';
 
 interface AIAssistantProps {
   user: UserProfile;
@@ -82,8 +84,11 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { isPro, requirePro } = useSubscription();
+  const { hasAIAccess, requireAIAccess, subscription } = useSubscription();
   const navigate = useNavigate();
+
+  // Get token usage summary
+  const tokenUsage = subscription ? getUsageSummary(subscription.tokenUsage, subscription.plan) : null;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -105,12 +110,13 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
   };
 
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
+  // Internal function to execute message sending logic
+  const executeSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!input.trim() || isTyping) return;
 
-    // Check Pro access before making AI call
-    if (!requirePro('AI Assistant')) {
+    // Check AI access before making AI call (Pro OR free with credits)
+    if (!requireAIAccess('AI Assistant')) {
       return;
     }
 
@@ -242,6 +248,9 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
     }
   };
 
+  // Throttled version to prevent spamming (300ms cooldown)
+  const handleSendMessage = useThrottle(executeSendMessage, 300);
+
   return (
     <div className="max-w-4xl mx-auto h-[calc(100vh-8rem)] flex flex-col animate-in fade-in duration-500">
       <header className="flex items-center gap-4 mb-6 px-1 flex-none">
@@ -257,22 +266,80 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
          </div>
       </header>
 
+      {/* Token Usage Warning Banner */}
+      {tokenUsage && tokenUsage.hasExceededLimit && (
+        <div className="bg-red-500/10 border-2 border-red-500/30 rounded-xl p-4 mb-4 animate-in fade-in slide-in-from-top duration-300">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={24} className="text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-red-400 font-black uppercase tracking-wide text-sm mb-1">
+                {subscription?.plan === 'pro' ? 'Monthly Token Limit Reached' : 'Free Credits Exhausted'}
+              </h3>
+              <p className="text-red-300 text-sm leading-relaxed">
+                You've used {tokenUsage.used} of your {tokenUsage.limit} limit. 
+                {subscription?.plan === 'pro' 
+                  ? ' Your limit will reset at the end of your billing period.'
+                  : ' Upgrade to Pro for $2.00/month in AI credits.'}
+              </p>
+            </div>
+            {subscription?.plan !== 'pro' && (
+              <button
+                onClick={() => navigate('/plan')}
+                className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-lg font-bold text-sm transition-colors flex-shrink-0"
+              >
+                Upgrade Now
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tokenUsage && tokenUsage.isApproachingLimit && !tokenUsage.hasExceededLimit && (
+        <div className="bg-yellow-500/10 border-2 border-yellow-500/30 rounded-xl p-4 mb-4 animate-in fade-in slide-in-from-top duration-300">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={20} className="text-yellow-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-yellow-400 font-black uppercase tracking-wide text-xs mb-1">
+                {subscription?.plan === 'pro' ? 'Approaching Monthly Limit' : 'Free Credits Running Low'}
+              </h3>
+              <p className="text-yellow-300 text-xs leading-relaxed">
+                You've used {tokenUsage.percent}% of your {subscription?.plan === 'pro' ? 'monthly' : 'free'} credits ({tokenUsage.used} / {tokenUsage.limit}). 
+                {subscription?.plan !== 'pro' && ' Upgrade to Pro for more AI credits.'}
+              </p>
+            </div>
+            {subscription?.plan !== 'pro' && (
+              <button
+                onClick={() => navigate('/plan')}
+                className="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-400 text-background rounded-lg font-bold text-xs transition-colors flex-shrink-0"
+              >
+                Upgrade
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 bg-surface/50 border border-secondary/20 rounded-2xl overflow-hidden flex flex-col shadow-2xl backdrop-blur-sm relative">
          {/* Decorative grid background */}
          <div className="absolute inset-0 bg-[linear-gradient(rgba(0,225,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(0,225,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none"></div>
 
-         {/* Pro Feature Gate */}
-         {!isPro && (
+         {/* AI Access Gate */}
+         {!hasAIAccess && (
            <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm">
              <div className="max-w-md mx-4 text-center space-y-6">
                <div className="w-20 h-20 mx-auto bg-primary/10 rounded-2xl flex items-center justify-center border-2 border-primary/30">
                  <Lock size={40} className="text-primary" />
                </div>
                <div className="space-y-2">
-                 <h2 className="text-2xl font-black text-white uppercase tracking-tight">Pro Feature</h2>
+                 <h2 className="text-2xl font-black text-white uppercase tracking-tight">
+                   {subscription?.tokenUsage && subscription.tokenUsage.totalCost > 0
+                     ? 'Free Credits Exhausted'
+                     : 'AI Feature'}
+                 </h2>
                  <p className="text-gray-400 leading-relaxed">
-                   The AI Performance Analytics Assistant is available exclusively for Pro members. 
-                   Upgrade to unlock AI-powered task suggestions, quest planning, and strategic insights.
+                   {subscription?.tokenUsage && subscription.tokenUsage.totalCost > 0
+                     ? `You've used your $0.13 in free credits. Upgrade to Pro for $2.00/month in AI credits to continue using AI-powered features.`
+                     : 'The AI Performance Analytics Assistant provides AI-powered task suggestions, quest planning, and strategic insights. Free users get $0.13 in credits to try it out!'}
                  </p>
                </div>
                <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -280,7 +347,9 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                    onClick={() => navigate('/plan')}
                    className="px-6 py-3 bg-primary text-background rounded-xl font-bold hover:bg-cyan-400 transition-colors shadow-lg shadow-primary/20"
                  >
-                   Upgrade to Pro
+                   {subscription?.tokenUsage && subscription.tokenUsage.totalCost > 0
+                     ? 'Upgrade to Pro'
+                     : 'View Plans'}
                  </button>
                  <button
                    onClick={() => navigate('/dashboard')}

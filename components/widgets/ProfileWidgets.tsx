@@ -295,8 +295,8 @@ export const TasksWidget: React.FC<{
           </form>
         )}
         <div className="space-y-2">
-          {user.goals.length === 0 && <p className="text-secondary text-center text-xs py-4 uppercase font-bold tracking-widest">No goals initialized.</p>}
-          {user.goals.map((goal: Goal) => (
+          {(!user.goals || user.goals.length === 0) && <p className="text-secondary text-center text-xs py-4 uppercase font-bold tracking-widest">No goals initialized.</p>}
+          {user.goals?.map((goal: Goal) => (
             <div key={goal.id} className="group flex items-center justify-between p-3 bg-background rounded-lg border border-secondary/10 hover:border-primary/30 transition-colors">
               <div className="flex items-center gap-3">
                 <button onClick={() => handleToggleGoal(goal.id)} className={`transition-colors ${goal.completed ? 'text-primary' : 'text-secondary hover:text-primary'}`}>

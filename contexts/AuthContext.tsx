@@ -17,6 +17,7 @@ import {
   updatePassword,
   reauthenticateWithCredential,
   EmailAuthProvider,
+  sendEmailVerification,
 } from 'firebase/auth';
 import { auth, useEmulators } from '../config/firebase';
 import { ensureUserDocument, FirestoreUserDocument, deleteUserData } from '../services/firestoreUserService';
@@ -34,6 +35,7 @@ interface AuthContextType {
   completeMagicLinkSignIn: (email: string) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
   signUpWithPassword: (email: string, password: string) => Promise<void>;
+  resendVerificationEmail: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -303,9 +305,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       setError(null);
-      await createUserWithEmailAndPassword(auth, email, password);
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Send verification email (skip in emulator mode as emails won't work)
+      if (!useEmulators && result.user) {
+        try {
+          await sendEmailVerification(result.user);
+          console.log('✅ Verification email sent to:', email);
+        } catch (verifyErr: any) {
+          console.warn('Failed to send verification email:', verifyErr);
+          // Don't throw - account is still created, just verification email failed
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to create account');
+      throw err;
+    }
+  };
+
+  // Resend verification email
+  const resendVerificationEmail = async () => {
+    if (!auth || !user) {
+      setError('No user is currently signed in');
+      throw new Error('No user is currently signed in');
+    }
+
+    if (user.emailVerified) {
+      setError('Email is already verified');
+      throw new Error('Email is already verified');
+    }
+
+    try {
+      setError(null);
+      await sendEmailVerification(user);
+      console.log('✅ Verification email resent to:', user.email);
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend verification email');
       throw err;
     }
   };
@@ -437,6 +472,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     completeMagicLinkSignIn,
     signInWithPassword,
     signUpWithPassword,
+    resendVerificationEmail,
     signOut,
     deleteAccount,
     changePassword,

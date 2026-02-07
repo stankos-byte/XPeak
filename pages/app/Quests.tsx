@@ -36,11 +36,11 @@ const QuestsView: React.FC<QuestsViewProps> = ({
   popups 
 }) => {
   const [mobileMenuId, setMobileMenuId] = useState<string | null>(null);
-  const { requirePro } = useSubscription();
+  const { requireAIAccess } = useSubscription();
 
-  // Wrap handleQuestOracle with Pro gate
+  // Wrap handleQuestOracle with AI access gate (Pro OR free with credits)
   const handleQuestOracleWithGate = (quest: MainQuest) => {
-    if (!requirePro('AI Quest Generation')) return;
+    if (!requireAIAccess('AI Quest Generation')) return;
     handleQuestOracle(quest);
   };
 

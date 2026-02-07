@@ -451,8 +451,15 @@ export const useUserManager = (): UseUserManagerReturn => {
     }
   }, [authUser]);
 
+  // Merge goals and templates into user object for components that expect it
+  const userWithSubcollections = {
+    ...user,
+    goals,
+    templates,
+  };
+
   return {
-    user,
+    user: userWithSubcollections,
     setUser,
     levelProgress,
     applyGlobalXPChange,

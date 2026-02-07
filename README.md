@@ -12,6 +12,7 @@ Transform your daily life into an epic RPG adventure! XPeak helps you level up b
 - **🤖 AI Assistant** - Get help breaking down goals and managing your progression
 - **⏱️ Pomodoro Timer** - Built-in focus timer for productivity sessions
 - **📈 Progress Analytics** - Visualize your growth with detailed statistics
+- **🔧 Maintenance Mode** - Built-in maintenance mode system for app updates
 
 ## 🛠️ Tech Stack
 
@@ -131,9 +132,12 @@ xpeak/
 │   │   ├── Assistant.tsx
 │   │   └── Settings.tsx
 │   ├── auth/          # Authentication pages
-│   └── landing/       # Landing page
+│   ├── landing/       # Landing page
+│   └── Maintenance.tsx # Maintenance mode page
 ├── services/           # Service layer
-│   └── localStorage.ts
+│   ├── localStorage.ts
+│   ├── firebasePaths.ts
+│   └── maintenanceService.ts
 ├── utils/              # Utility functions
 │   ├── gamification.ts
 │   └── validation.ts
@@ -183,8 +187,30 @@ We've recently enhanced the codebase with:
 - ✅ **TypeScript Strict Mode** - Enhanced type safety
 - ✅ **Custom Hooks** - Better code organization
 - ✅ **Context Providers** - Improved state management
+- ✅ **Maintenance Mode** - Real-time maintenance status system
 
 See [IMPROVEMENTS.md](./IMPROVEMENTS.md) for detailed information.
+
+### 🔧 Maintenance Mode
+
+XPeak includes a built-in maintenance mode system that allows you to display a maintenance page during updates or outages:
+
+- **Real-time Updates** - Changes to maintenance status are reflected instantly
+- **Firestore-based** - Centrally managed configuration
+- **Secure** - Only admins can update maintenance status
+- **Customizable** - Configure title, message, and scheduled completion time
+
+**Quick Start:**
+```bash
+# See the maintenance mode quick start guide
+cat MAINTENANCE_QUICK_START.md
+```
+
+**Documentation:**
+- [Quick Start Guide](./MAINTENANCE_QUICK_START.md) - Get started in 3 steps
+- [Full Setup Guide](./MAINTENANCE_SETUP.md) - Complete configuration instructions
+- [Integration Examples](./MAINTENANCE_INTEGRATION_EXAMPLE.md) - Code examples
+- [Implementation Details](./MAINTENANCE_IMPLEMENTATION.md) - Technical overview
 
 ## 🐛 Bug Prevention
 

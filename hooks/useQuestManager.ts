@@ -6,6 +6,7 @@ import { persistenceService } from '../services/persistenceService';
 import { generateQuest } from '../services/aiService';
 import { DEBUG_FLAGS } from '../config/debugFlags';
 import { useAuth } from '../contexts/AuthContext';
+import { useThrottle } from './useDebounce';
 import { 
   getQuests, 
   saveQuest, 
@@ -195,7 +196,8 @@ export const useQuestManager = (
     setPendingQuestBonus(null);
   }, [pendingQuestBonus]);
 
-  const handleQuestOracle = useCallback(async (quest: MainQuest) => {
+  // Internal function to execute quest oracle logic
+  const executeQuestOracle = useCallback(async (quest: MainQuest) => {
     // Check if quest already has data and confirm overwrite
     if (quest.categories.length > 0) {
       if (!window.confirm("This will overwrite the existing breakdown for this quest. Proceed?")) {
@@ -233,6 +235,9 @@ export const useQuestManager = (
       setOraclingQuestId(null); 
     }
   }, [expandedNodes, toggleNode, saveQuestToFirestore]);
+
+  // Throttled version to prevent spamming (300ms cooldown)
+  const handleQuestOracle = useThrottle(executeQuestOracle, 300);
 
   const handleDeleteQuestTask = useCallback((questId: string, categoryId: string, taskId: string, onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void) => {
     const q = mainQuests.find((x: MainQuest) => x.id === questId);

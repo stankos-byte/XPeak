@@ -26,6 +26,7 @@ const Signup = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [authMode, setAuthMode] = useState<'magic-link' | 'password'>('magic-link');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -93,7 +94,11 @@ const Signup = () => {
         setMagicLinkSent(true);
       } else {
         await signUpWithPassword(formData.email, formData.password);
-        // Navigation will happen automatically via useEffect
+        // Show verification message (only in production mode)
+        if (!isUsingEmulator) {
+          setVerificationSent(true);
+        }
+        // Navigation will happen automatically via useEffect if in emulator mode
       }
     } catch (err: any) {
       setLocalError(err.message || 'An error occurred');
@@ -180,6 +185,41 @@ const Signup = () => {
           >
             Use a different email
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show success message if verification email was sent (password signup)
+  if (verificationSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#1a1625] p-8">
+        <div className="w-full max-w-md text-center">
+          <div className="mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+              <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-white text-3xl font-semibold mb-3">Account created!</h2>
+            <p className="text-gray-400">
+              We've sent a verification email to <span className="text-white font-medium">{formData.email}</span>
+            </p>
+            <p className="text-gray-500 text-sm mt-2">
+              Please check your inbox and click the verification link to activate your account.
+            </p>
+          </div>
+          <div className="space-y-3">
+            <button
+              onClick={() => navigate('/studio')}
+              className="w-full py-3 rounded-lg bg-gradient-to-r from-[#3b82f6] to-purple-600 hover:from-[#2563eb] hover:to-purple-700 text-white font-medium transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30"
+            >
+              Continue to app
+            </button>
+            <p className="text-xs text-gray-500">
+              You can verify your email later from within the app
+            </p>
+          </div>
         </div>
       </div>
     );
