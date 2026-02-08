@@ -111,7 +111,10 @@ export const useQuestManager = (
   // Helper to save quest to Firestore
   const saveQuestToFirestore = useCallback((quest: MainQuest) => {
     if (user) {
-      saveQuest(user.uid, quest).catch(console.error);
+      saveQuest(user.uid, quest).catch((error) => {
+        console.error('Failed to save quest to Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [user]);
 
@@ -310,7 +313,10 @@ export const useQuestManager = (
     
     // Delete from Firestore
     if (user) {
-      firestoreDeleteQuest(user.uid, id).catch(console.error);
+      firestoreDeleteQuest(user.uid, id).catch((error) => {
+        console.error('Failed to delete quest from Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [user]);
 

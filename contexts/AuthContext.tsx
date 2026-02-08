@@ -29,12 +29,12 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   isUsingEmulator: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (nickname?: string) => Promise<void>;
   signInAsTestUser: () => Promise<void>;
-  sendMagicLink: (email: string) => Promise<void>;
+  sendMagicLink: (email: string, nickname?: string) => Promise<void>;
   completeMagicLinkSignIn: (email: string) => Promise<void>;
   signInWithPassword: (email: string, password: string) => Promise<void>;
-  signUpWithPassword: (email: string, password: string) => Promise<void>;
+  signUpWithPassword: (email: string, password: string, nickname?: string) => Promise<void>;
   resendVerificationEmail: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
@@ -46,10 +46,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Magic Link configuration
 const getActionCodeSettings = (): ActionCodeSettings => {
-  // Use current origin for the redirect URL
+  // Use current origin for the redirect URL, or fallback to env var or default
   const url = typeof window !== 'undefined' 
     ? `${window.location.origin}/login` 
-    : 'http://localhost:5173/login';
+    : (import.meta.env.VITE_APP_URL || 'http://localhost:5173') + '/login';
   
   return {
     url,
@@ -57,8 +57,9 @@ const getActionCodeSettings = (): ActionCodeSettings => {
   };
 };
 
-// Local storage key for email (needed for magic link completion)
+// Local storage keys
 const EMAIL_FOR_SIGN_IN_KEY = 'emailForSignIn';
+const NICKNAME_FOR_SIGN_UP_KEY = 'nicknameForSignUp';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -70,6 +71,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [redirectChecked, setRedirectChecked] = useState(false);
+  const [pendingNickname, setPendingNickname] = useState<string | null>(null);
 
   // Handle redirect result FIRST (for emulator Google sign-in)
   // This must complete before we allow the auth state to settle
@@ -92,8 +94,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           // Ensure user document exists
           try {
-            const userDoc = await ensureUserDocument(result.user);
+            // Check for pending nickname in localStorage (for Google signup)
+            const nickname = window.localStorage.getItem(NICKNAME_FOR_SIGN_UP_KEY) || undefined;
+            const userDoc = await ensureUserDocument(result.user, nickname);
             setUserDocument(userDoc);
+            
+            // Clear pending nickname after use
+            if (nickname) {
+              window.localStorage.removeItem(NICKNAME_FOR_SIGN_UP_KEY);
+            }
           } catch (err) {
             console.error('Failed to ensure user document after redirect:', err);
           }
@@ -123,9 +132,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (firebaseUser) {
         try {
+          // Check for pending nickname in state or localStorage
+          const nickname = pendingNickname || window.localStorage.getItem(NICKNAME_FOR_SIGN_UP_KEY) || undefined;
+          
           // Ensure user document exists in Firestore (creates if new, updates lastLoginAt if existing)
-          const userDoc = await ensureUserDocument(firebaseUser);
+          const userDoc = await ensureUserDocument(firebaseUser, nickname);
           setUserDocument(userDoc);
+          
+          // Clear pending nickname after use
+          if (nickname) {
+            setPendingNickname(null);
+            window.localStorage.removeItem(NICKNAME_FOR_SIGN_UP_KEY);
+          }
         } catch (err) {
           console.error('Failed to ensure user document:', err);
           // Don't block auth if Firestore fails - user can still use the app
@@ -188,7 +206,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   // Sign in with Google
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (nickname?: string) => {
     if (!auth) {
       setError('Firebase is not configured');
       return;
@@ -197,12 +215,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setError(null);
       
+      // Store nickname for use after auth completes
+      if (nickname) {
+        setPendingNickname(nickname);
+        window.localStorage.setItem(NICKNAME_FOR_SIGN_UP_KEY, nickname);
+      }
+      
       // In emulator mode, create a mock Google user directly
       // The emulator doesn't support real OAuth flows (popup/redirect both fail)
       if (useEmulators) {
         console.log('🔧 Creating mock Google user (emulator mode)');
         const mockEmail = 'google.user@example.com';
-        const mockPassword = 'google-mock-password-123';
+        const mockPassword = import.meta.env.VITE_MOCK_GOOGLE_PASSWORD || 'google-mock-password-123';
         
         try {
           // Try to sign in first (in case user already exists)
@@ -242,7 +266,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   // Send magic link email
-  const sendMagicLink = async (email: string) => {
+  const sendMagicLink = async (email: string, nickname?: string) => {
     if (!auth) {
       setError('Firebase is not configured');
       return;
@@ -252,10 +276,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setError(null);
       const actionCodeSettings = getActionCodeSettings();
       await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-      // Save email to localStorage for when user clicks the link
+      // Save email and nickname to localStorage for when user clicks the link
       window.localStorage.setItem(EMAIL_FOR_SIGN_IN_KEY, email);
+      if (nickname) {
+        window.localStorage.setItem(NICKNAME_FOR_SIGN_UP_KEY, nickname);
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to send magic link');
+      const code = err?.code || '';
+      const message =
+        code === 'auth/unauthorized-domain'
+          ? `This domain is not authorized for sign-in. Add ${typeof window !== 'undefined' ? window.location.hostname : 'your site'} to Firebase Console → Authentication → Authorized domains.`
+          : err.message || 'Failed to send magic link';
+      setError(message);
       throw err;
     }
   };
@@ -297,7 +329,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   // Sign up with email and password
-  const signUpWithPassword = async (email: string, password: string) => {
+  const signUpWithPassword = async (email: string, password: string, nickname?: string) => {
     if (!auth) {
       setError('Firebase is not configured');
       return;
@@ -305,6 +337,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     try {
       setError(null);
+      
+      // Store nickname for use after auth completes
+      if (nickname) {
+        setPendingNickname(nickname);
+      }
+      
       const result = await createUserWithEmailAndPassword(auth, email, password);
       
       // Send verification email (skip in emulator mode as emails won't work)
@@ -413,14 +451,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       setError(null);
       const testEmail = 'test@example.com';
-      const testPassword = 'testpassword123';
+      const testPassword = import.meta.env.VITE_TEST_PASSWORD || 'testpassword123';
       
       try {
         // Try to sign in first (in case user already exists)
         await signInWithEmailAndPassword(auth, testEmail, testPassword);
-      } catch {
+      } catch (signInErr) {
         // If sign in fails, create the account
-        await createUserWithEmailAndPassword(auth, testEmail, testPassword);
+        if (typeof signInErr === 'object' && signInErr !== null && 'code' in signInErr) {
+          const errorCode = (signInErr as { code: string }).code;
+          if (errorCode === 'auth/user-not-found' || errorCode === 'auth/invalid-credential') {
+            await createUserWithEmailAndPassword(auth, testEmail, testPassword);
+          } else {
+            throw signInErr;
+          }
+        } else {
+          throw signInErr;
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Failed to sign in as test user');

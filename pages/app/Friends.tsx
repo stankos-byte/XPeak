@@ -15,9 +15,6 @@ interface FriendsViewProps {
   onToggleChallengeTask: (challengeId: string, categoryId: string, taskId: string) => void;
 }
 
-// TODO: Replace with actual user ID from auth context
-const CURRENT_USER_ID = 'currentUser';
-
 // Helper to check if a task is completed by a specific user
 const isTaskCompletedByUser = (task: ChallengeQuestTask, userId: string): boolean => {
   return task.statusByUser[userId] === 'completed';
@@ -28,7 +25,8 @@ const getOpponentIds = (challenge: FriendChallenge, currentUserId: string): stri
   return challenge.partnerIds.filter(id => id !== currentUserId);
 };
 
-const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
+const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
+  const CURRENT_USER_ID = user.uid;
   const [expandedChallenges, setExpandedChallenges] = useState<Record<string, boolean>>({});
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
@@ -356,11 +354,11 @@ const FriendsView: React.FC<FriendsViewProps> = ({ friends, challenges, onCreate
                       className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-black text-white cursor-pointer flex-shrink-0"
                       style={{ backgroundColor: friend.color }}
                     >
-                      {friend.name.charAt(0)}
+                      {friend.nickname.charAt(0)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <h4 className="text-white font-bold text-sm group-hover:text-primary transition-colors cursor-pointer truncate">
-                        {friend.name}
+                        {friend.nickname}
                       </h4>
                     </div>
                   </div>
@@ -435,10 +433,10 @@ const FriendProfileModal: React.FC<FriendProfileModalProps> = ({ friend, isOpen,
               className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-black text-white"
               style={{ backgroundColor: friend.color }}
             >
-              {friend.name.charAt(0)}
+              {friend.nickname.charAt(0)}
             </div>
             <div>
-              <h2 className="text-xl font-black text-white uppercase tracking-tighter italic">{friend.name}</h2>
+              <h2 className="text-xl font-black text-white uppercase tracking-tighter italic">{friend.nickname}</h2>
               <p className="text-sm text-gray-400">LVL {friend.level}</p>
             </div>
           </div>
@@ -501,8 +499,16 @@ const AddFriendModal: React.FC<AddFriendModalProps> = ({ isOpen, onClose, existi
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!friendId.trim()) return;
-    // TODO: Implement add friend functionality
+    
+    // IMPLEMENTATION NOTE: Add friend functionality requires backend integration
+    // To implement:
+    // 1. Call Firebase Function or API endpoint to send friend request
+    //    Example: await functions.httpsCallable('sendFriendRequest')({ friendId });
+    // 2. Add to Firestore: collection('friendRequests').add({ from: currentUserId, to: friendId, status: 'pending' })
+    // 3. Send notification to the target user
+    // 4. Update UI to show pending request state
     if (DEBUG_FLAGS.social) console.log('Add friend:', friendId);
+    
     onClose();
     setFriendId('');
   };
@@ -565,7 +571,13 @@ interface Notification {
 }
 
 const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, onClose }) => {
-  // TODO: Replace with actual notifications from state/context
+  // IMPLEMENTATION NOTE: Replace mock notifications with real data from Firestore
+  // To implement:
+  // 1. Subscribe to user's notifications collection in Firestore
+  //    const notificationsRef = collection(db, 'users', userId, 'notifications');
+  //    const q = query(notificationsRef, orderBy('createdAt', 'desc'), limit(20));
+  // 2. Use onSnapshot for real-time updates
+  // 3. Mark notifications as read when clicked
   const [notifications] = useState<Notification[]>([
     {
       id: '1',
@@ -586,7 +598,13 @@ const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, onClose
   if (!isOpen) return null;
 
   const handleNotificationClick = (notification: Notification) => {
-    // TODO: Implement notification action
+    // IMPLEMENTATION NOTE: Implement notification actions based on type
+    // To implement:
+    // 1. For friend_request: navigate to friend requests page or show accept/decline modal
+    // 2. For challenge_invite: navigate to challenge details or show accept modal
+    // 3. For achievement: navigate to achievements page
+    // 4. Mark notification as read in Firestore
+    //    await updateDoc(doc(db, 'users', userId, 'notifications', notification.id), { read: true });
     if (DEBUG_FLAGS.social) console.log('Notification clicked:', notification);
   };
 

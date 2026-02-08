@@ -50,6 +50,7 @@ export interface FirestoreUserDocument {
   uid: string;
   email: string;
   name: string;
+  nickname: string;
   photoURL: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
@@ -112,6 +113,33 @@ const getAuthProvider = (user: User): AuthProvider => {
 };
 
 /**
+ * Generate a nickname from user data
+ * Priority: custom nickname > displayName > email prefix > generated default
+ */
+const generateNickname = (user: User, customNickname?: string): string => {
+  // 1. Use custom nickname if provided
+  if (customNickname && customNickname.trim()) {
+    return customNickname.trim();
+  }
+  
+  // 2. Use displayName if available (from OAuth)
+  if (user.displayName && user.displayName.trim()) {
+    return user.displayName.trim();
+  }
+  
+  // 3. Use email prefix if available
+  if (user.email) {
+    const emailPrefix = user.email.split('@')[0];
+    if (emailPrefix) {
+      return emailPrefix;
+    }
+  }
+  
+  // 4. Generate default with random digits
+  return `Agent-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+};
+
+/**
  * Create a new user document in Firestore
  * 
  * IMPORTANT: Uses doc() with user.uid to create a document with a specific ID.
@@ -120,7 +148,7 @@ const getAuthProvider = (user: User): AuthProvider => {
  * - Easy to look up (no need to query, just use fbPaths.userDoc(uid))
  * - Consistent with security rules (request.auth.uid == userId)
  */
-const createUserDocument = async (user: User): Promise<FirestoreUserDocument> => {
+const createUserDocument = async (user: User, customNickname?: string): Promise<FirestoreUserDocument> => {
   if (!db) {
     throw new Error('Firestore is not initialized');
   }
@@ -132,6 +160,7 @@ const createUserDocument = async (user: User): Promise<FirestoreUserDocument> =>
     uid: user.uid,
     email: user.email || '',
     name: user.displayName || 'Protocol-01',
+    nickname: generateNickname(user, customNickname),
     photoURL: user.photoURL || null,
     createdAt: serverTimestamp() as Timestamp,
     updatedAt: serverTimestamp() as Timestamp,
@@ -193,9 +222,10 @@ export const getUserDocument = async (uid: string): Promise<FirestoreUserDocumen
  * - Updates lastLoginAt if user already exists
  * 
  * @param user Firebase Auth user object
+ * @param customNickname Optional custom nickname for new users
  * @returns The user document (newly created or existing)
  */
-export const ensureUserDocument = async (user: User): Promise<FirestoreUserDocument | null> => {
+export const ensureUserDocument = async (user: User, customNickname?: string): Promise<FirestoreUserDocument | null> => {
   if (!db) {
     console.warn('Firestore is not initialized - skipping user document creation');
     return null;
@@ -209,8 +239,8 @@ export const ensureUserDocument = async (user: User): Promise<FirestoreUserDocum
       await updateLastLogin(user.uid);
       return existingUser;
     } else {
-      // New user, create document
-      return await createUserDocument(user);
+      // New user, create document with optional custom nickname
+      return await createUserDocument(user, customNickname);
     }
   } catch (error) {
     console.error('Error ensuring user document:', error);
@@ -224,6 +254,24 @@ export const ensureUserDocument = async (user: User): Promise<FirestoreUserDocum
 export const userDocumentExists = async (uid: string): Promise<boolean> => {
   const userDoc = await getUserDocument(uid);
   return userDoc !== null;
+};
+
+/**
+ * Update user nickname in Firestore
+ * @param uid User ID
+ * @param nickname New nickname to set
+ */
+export const updateUserNickname = async (uid: string, nickname: string): Promise<void> => {
+  if (!db) {
+    throw new Error('Firestore is not initialized');
+  }
+
+  const userRef = fbPaths.userDoc(uid);
+  await updateDoc(userRef, {
+    nickname: nickname.trim(),
+    updatedAt: serverTimestamp()
+  });
+  console.log('✅ Updated nickname for user:', uid);
 };
 
 /**

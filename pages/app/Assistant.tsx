@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, User, Sparkles, Terminal, Loader2, Cpu, Command, Lock, AlertTriangle } from 'lucide-react';
+import { Bot, Send, User, Loader2, Command, Lock, AlertTriangle } from 'lucide-react';
 import { UserProfile, Task, MainQuest, FriendChallenge, Friend, Difficulty, SkillCategory, ChatMessage } from '../../types';
 import { generateChatResponse, generateFollowUpResponse } from '../../services/aiService';
 import { DEBUG_FLAGS } from '../../config/debugFlags';
@@ -9,15 +9,41 @@ import { useNavigate } from 'react-router-dom';
 import { useThrottle } from '../../hooks/useDebounce';
 import { getUsageSummary } from '../../services/tokenService';
 
+interface AddTaskData {
+  title: string;
+  description?: string;
+  difficulty: Difficulty;
+  skillCategory: SkillCategory;
+  isHabit?: boolean;
+}
+
+interface AddQuestCategory {
+  title: string;
+  tasks: Array<{
+    name: string;
+    difficulty: Difficulty;
+    skillCategory: SkillCategory;
+    description?: string;
+  }>;
+}
+
+interface AddChallengeData {
+  title: string;
+  description?: string;
+  partnerIds?: string[];
+  categories?: AddQuestCategory[];
+  mode?: 'competitive' | 'coop';
+}
+
 interface AIAssistantProps {
   user: UserProfile;
   tasks: Task[];
   quests: MainQuest[];
   friends: Friend[];
   challenges: FriendChallenge[];
-  onAddTask: (task: any) => void;
-  onAddQuest: (title: string, categories?: any[]) => void;
-  onAddChallenge: (challenge: any) => void;
+  onAddTask: (task: AddTaskData) => void;
+  onAddQuest: (title: string, categories?: AddQuestCategory[]) => void;
+  onAddChallenge: (challenge: AddChallengeData) => void;
   messages: ChatMessage[];
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
 }
@@ -133,55 +159,83 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
         You speak like a high-performance business intelligence system, using executive terminology.
         
         CURRENT USER STATUS:
-        Name: ${user.name}
+        Nickname: ${user.nickname}
         Level: ${user.level}
         Total XP: ${user.totalXP}
         Identity Core: "${user.identity}"
         
         Active Tasks: ${activeTasksCount}
         Active Operations: ${quests.length}
-        Friends: ${friends.map(f => f.name).join(', ')}
+        Network Connections: ${friends.map(f => f.nickname || f.name).join(', ') || 'None'}
         
         DECISION PROTOCOL:
         1. **GENERAL INQUIRY / CHAT**: If the user asks a question, seeks advice, or chats (e.g., "How do I improve performance?", "What is Total XP?", "Suggest some tasks"), JUST REPLY with text. DO NOT use any tools.
         2. **SINGLE OBJECTIVE**: ONLY if the user explicitly COMMANDS to add an item (e.g., "Add an objective to...", "Remind me to...", "Create a habit..."), use 'create_task'.
-        3. **OPERATION**: ONLY if the user COMMANDS to start a large project (e.g., "Start an operation to...", "I want to build a...", "Plan a..."), use 'create_quest'. You MUST generate a full breakdown of phases and tasks for the operation.
-        4. **COMPETITION**: Use 'create_challenge' ONLY for explicit competitive requests (e.g., "Challenge [friend] to...", "Create a challenge against..."). 
-           CRITICAL: You MUST ALWAYS generate a detailed breakdown with:
-           - Multiple phases (at least 2-3 phases/sections)
-           - Multiple tasks per phase (at least 3-5 tasks per section)
-           - Each task must have: name, difficulty, skillCategory, and optional description
-           - Think of strategic, competitive tasks that both participants can complete
+        3. **OPERATION** (Solo Quest): ONLY if the user COMMANDS to start a SOLO large project (e.g., "Start an operation to...", "I want to build a..."), use 'create_quest'. You MUST generate a full breakdown of phases and tasks.
+        4. **CHALLENGE/MISSION** (With Friends): Use 'create_challenge' for ANY activity involving network connections (friends).
+           - Keywords indicating challenge: "mission", "coop", "challenge", "with [friend]", "against [friend]", "together", "collaborative", "compete"
+           - **IMPORTANT**: "Mission" = Challenge with friend, NOT a quest
+           - **COOP MODE** (mode: "coop"): Collaborative/teamwork. Keywords: "coop", "with", "together", "collaborative", "team up", "partner with", "mission"
+           - **COMPETITIVE MODE** (mode: "competitive"): Competition/racing. Keywords: "against", "challenge", "compete", "race", "vs", "beat"
+           - CRITICAL: You MUST ALWAYS generate a detailed breakdown with:
+             * Multiple phases (at least 2-3 phases/sections)
+             * Multiple tasks per phase (at least 3-5 tasks per section)
+             * Each task must have: name, difficulty, skillCategory, and optional description
+             * Design tasks appropriate for the mode (competitive = racing, coop = shared goals)
+
+        CLARIFICATION PROTOCOL (CRITICAL - ALWAYS FOLLOW):
+        You MUST ask for clarification when information is missing or unclear:
+        - **Friend name missing for challenge/mission**: ALWAYS ask "Which network connection should I assign to this ${friends.length > 0 ? '(Available: ' + friends.map(f => f.name).join(', ') + ')' : 'mission'}?"
+        - **Ambiguous friend**: If multiple friends could match, ask "Did you mean [Friend1] or [Friend2]?"
+        - **Vague single-word request**: For vague requests (e.g., "gym", "python", "reading"), ALWAYS ask "What would you like me to create? A task (single item), operation (solo multi-step project), or mission (with a friend)?"
+        - **Missing context for challenges**: If challenge/mission topic is vague, ask "What should this mission focus on? (e.g., specific exercises, reading goals, learning objectives)"
+        - **DO NOT ask** when the request is clear with all details (e.g., "Create a coop gym mission with Sarah focusing on cardio and strength training")
+        - **Default behavior**: If mode is ambiguous between coop/competitive, default to competitive and mention it
 
         Use professional terminology. Focus on performance optimization and measurable outcomes.
       `;
 
-      const response = await generateChatResponse(messages, input, systemPrompt);
+      // Filter out tool notification messages before sending to AI
+      const chatMessages = messages.filter(m => !m.isTool);
+      const response = await generateChatResponse(chatMessages, input, systemPrompt);
 
       const functionCalls = response.functionCalls;
       
+      interface FunctionResponse {
+        id: string;
+        name: string;
+        response: { result: { status: string; message: string } };
+      }
+      
       if (functionCalls && functionCalls.length > 0) {
-         const functionResponses: any[] = [];
+         const functionResponses: FunctionResponse[] = [];
 
          for (const call of functionCalls) {
              let result = { status: 'ok', message: 'Action executed successfully.' };
              
              try {
                 if (call.name === 'create_task') {
-                    onAddTask(call.args);
-                    result.message = `Objective "${call.args.title}" added to system.`;
+                    onAddTask(call.args as AddTaskData);
+                    result.message = `Objective "${(call.args as AddTaskData).title}" added to system.`;
                 } else if (call.name === 'create_quest') {
-                    onAddQuest(call.args.title as string, call.args.categories as any[]);
-                    result.message = `Operation "${call.args.title}" initialized with ${(call.args.categories as any[])?.length || 0} phases.`;
+                    const questArgs = call.args as { title: string; categories?: AddQuestCategory[] };
+                    onAddQuest(questArgs.title, questArgs.categories);
+                    result.message = `Operation "${questArgs.title}" initialized with ${questArgs.categories?.length || 0} phases.`;
                 } else if (call.name === 'create_challenge') {
-                    const args = call.args as any;
+                    const args = call.args as { 
+                      title: string; 
+                      description?: string; 
+                      mode: 'competitive' | 'coop';
+                      opponentName: string; 
+                      categories?: AddQuestCategory[] 
+                    };
                     const opponent = friends.find(f => f.name.toLowerCase().includes(args.opponentName.toLowerCase()));
                     if (opponent) {
                         // Transform AI-generated categories to proper format with task IDs and statusByUser
-                        const formattedCategories = (args.categories || []).map((cat: any, catIndex: number) => ({
+                        const formattedCategories = (args.categories || []).map((cat, catIndex) => ({
                             id: `cat-${Date.now()}-${catIndex}`,
                             title: cat.title,
-                            tasks: (cat.tasks || []).map((task: any, taskIndex: number) => ({
+                            tasks: (cat.tasks || []).map((task, taskIndex) => ({
                                 task_id: `task-${Date.now()}-${catIndex}-${taskIndex}`,
                                 name: task.name,
                                 statusByUser: {}, // Empty = all pending
@@ -197,11 +251,12 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
                             title: args.title,
                             description: args.description || '',
                             partnerIds: [opponent.id],
-                            mode: 'competitive',
-                            categories: formattedCategories
+                            categories: formattedCategories,
+                            mode: args.mode || 'competitive'
                         });
-                        const taskCount = formattedCategories.reduce((sum: number, cat: any) => sum + (cat.tasks?.length || 0), 0);
-                        result.message = `Challenge contract "${args.title}" deployed against ${opponent.name} with ${taskCount} tasks across ${formattedCategories.length} phases.`;
+                        const taskCount = formattedCategories.reduce((sum: number, cat) => sum + (cat.tasks?.length || 0), 0);
+                        const modeLabel = args.mode === 'coop' ? 'cooperative' : 'competitive';
+                        result.message = `${modeLabel.charAt(0).toUpperCase() + modeLabel.slice(1)} challenge contract "${args.title}" deployed with ${opponent.name} - ${taskCount} tasks across ${formattedCategories.length} phases.`;
                     } else {
                          result = { status: 'error', message: `Connection "${args.opponentName}" not found in network.` };
                     }
@@ -227,10 +282,10 @@ const AIAssistantView: React.FC<AIAssistantProps> = ({
          
          // Send function response back to model to get final text
          const finalText = await generateFollowUpResponse(
-           messages,
+           chatMessages,
            input,
            systemPrompt,
-           response,
+           response.modelContent,
            functionResponses
          );
          

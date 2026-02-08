@@ -17,14 +17,14 @@ const Signup = () => {
   } = useAuth();
 
   const [formData, setFormData] = useState({
-    username: '',
+    nickname: '',
     email: '',
     password: '',
     agreeToTerms: false
   });
   const [showPassword, setShowPassword] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [authMode, setAuthMode] = useState<'magic-link' | 'password'>('magic-link');
+  const [authMode, setAuthMode] = useState<'magic-link' | 'password'>('password');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,10 +90,10 @@ const Signup = () => {
 
     try {
       if (authMode === 'magic-link') {
-        await sendMagicLink(formData.email);
+        await sendMagicLink(formData.email, formData.nickname || undefined);
         setMagicLinkSent(true);
       } else {
-        await signUpWithPassword(formData.email, formData.password);
+        await signUpWithPassword(formData.email, formData.password, formData.nickname || undefined);
         // Show verification message (only in production mode)
         if (!isUsingEmulator) {
           setVerificationSent(true);
@@ -116,7 +116,7 @@ const Signup = () => {
     setIsSubmitting(true);
     setLocalError(null);
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(formData.nickname || undefined);
       // Navigation will happen automatically via useEffect
     } catch (err: any) {
       setLocalError(err.message || 'Failed to sign up with Google');
@@ -179,7 +179,7 @@ const Signup = () => {
           <button
             onClick={() => {
               setMagicLinkSent(false);
-              setFormData({ ...formData, email: '' });
+              setFormData({ ...formData, email: '', nickname: '' });
             }}
             className="text-[#3b82f6] hover:text-blue-400 transition-colors font-medium"
           >
@@ -376,17 +376,6 @@ const Signup = () => {
           <div className="flex gap-2 mb-6">
             <button
               type="button"
-              onClick={() => setAuthMode('magic-link')}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-                authMode === 'magic-link'
-                  ? 'bg-[#3b82f6] text-white'
-                  : 'bg-[#3a3447] text-gray-400 hover:text-white'
-              }`}
-            >
-              Magic Link
-            </button>
-            <button
-              type="button"
               onClick={() => setAuthMode('password')}
               className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
                 authMode === 'password'
@@ -396,22 +385,31 @@ const Signup = () => {
             >
               Password
             </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode('magic-link')}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                authMode === 'magic-link'
+                  ? 'bg-[#3b82f6] text-white'
+                  : 'bg-[#3a3447] text-gray-400 hover:text-white'
+              }`}
+            >
+              Magic Link
+            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username Field (only for password mode) */}
-            {authMode === 'password' && (
-              <div>
-                <input
-                  type="text"
-                  placeholder="Username"
-                  value={formData.username}
-                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                  className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
-                  disabled={isSubmitting}
-                />
-              </div>
-            )}
+            {/* Nickname Field (shown for all auth modes) */}
+            <div>
+              <input
+                type="text"
+                placeholder="Nickname (optional)"
+                value={formData.nickname}
+                onChange={(e) => setFormData({ ...formData, nickname: e.target.value })}
+                className="w-full px-4 py-3 rounded-lg bg-[#3a3447] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-[#3b82f6] focus:ring-2 focus:ring-[#3b82f6]/20 transition-colors"
+                disabled={isSubmitting}
+              />
+            </div>
 
             {/* Email */}
             <div>

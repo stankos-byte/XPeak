@@ -8,16 +8,18 @@ Write-Host ""
 # Check if .env exists
 if (Test-Path ".env") {
     Write-Host "⚠️  .env file already exists!" -ForegroundColor Yellow
-    $overwrite = Read-Host "Do you want to overwrite it with production values? (y/n)"
+    $overwrite = Read-Host "Do you want to overwrite it with the template? (y/n)"
     if ($overwrite -ne "y") {
         Write-Host "Skipping .env creation" -ForegroundColor Yellow
     } else {
-        Copy-Item ".env.production.example" ".env" -Force
-        Write-Host "✅ Created .env from production template" -ForegroundColor Green
+        Copy-Item ".env.example" ".env" -Force
+        Write-Host "✅ Created .env from template" -ForegroundColor Green
+        Write-Host "⚠️  IMPORTANT: Edit .env and replace placeholder values with your Firebase config!" -ForegroundColor Yellow
     }
 } else {
-    Copy-Item ".env.production.example" ".env" -Force
-    Write-Host "✅ Created .env from production template" -ForegroundColor Green
+    Copy-Item ".env.example" ".env" -Force
+    Write-Host "✅ Created .env from template" -ForegroundColor Green
+    Write-Host "⚠️  IMPORTANT: Edit .env and replace placeholder values with your Firebase config!" -ForegroundColor Yellow
 }
 
 Write-Host ""

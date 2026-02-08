@@ -1,0 +1,37 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+
+repos:
+  # Gitleaks - Detect hardcoded secrets
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        name: Gitleaks - Detect secrets
+        description: Scan commits for hardcoded secrets and API keys
+        entry: gitleaks protect --verbose --redact --staged
+        language: golang
+        pass_filenames: false
+
+  # Additional security checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-added-large-files
+        name: Check for large files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+        name: Check for merge conflicts
+      - id: check-yaml
+        name: Check YAML syntax
+        exclude: '^\.pre-commit-config\.yaml$'
+      - id: check-json
+        name: Check JSON syntax
+      - id: end-of-file-fixer
+        name: Fix end of files
+        exclude: '^(\.env.*|\.cursorignore)$'
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+        exclude: '^(\.env.*|\.md|\.cursorignore)$'
+      - id: detect-private-key
+        name: Detect private keys

@@ -121,7 +121,10 @@ export const useTaskManager = (
         completed: true,
         lastCompletedDate: now,
         streak: newStreak
-      }).catch(console.error);
+      }).catch((error) => {
+        console.error('Failed to save task completion:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
 
     onXPChange(amount, id, { [id]: amount }, task.skillCategory);
@@ -154,7 +157,10 @@ export const useTaskManager = (
         completed: false,
         lastCompletedDate: null,
         streak: newStreak
-      }).catch(console.error);
+      }).catch((error) => {
+        console.error('Failed to save task uncomplete:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
 
     onXPChange(amount, id, { [id]: amount }, task.skillCategory);
@@ -165,7 +171,10 @@ export const useTaskManager = (
     
     // Delete from Firestore if authenticated
     if (user) {
-      firestoreDeleteTask(user.uid, id).catch(console.error);
+      firestoreDeleteTask(user.uid, id).catch((error) => {
+        console.error('Failed to delete task from Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [user]);
 
@@ -204,7 +213,10 @@ export const useTaskManager = (
 
     // Save to Firestore if authenticated
     if (user) {
-      saveTask(user.uid, newTask).catch(console.error);
+      saveTask(user.uid, newTask).catch((error) => {
+        console.error('Failed to save new task to Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [user]);
 
@@ -213,7 +225,10 @@ export const useTaskManager = (
     
     // Save to Firestore if authenticated
     if (user) {
-      updateTask(user.uid, id, data).catch(console.error);
+      updateTask(user.uid, id, data).catch((error) => {
+        console.error('Failed to update task in Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [user]);
 
@@ -235,7 +250,10 @@ export const useTaskManager = (
 
     // Save to Firestore if authenticated
     if (user) {
-      saveTask(user.uid, newTask).catch(console.error);
+      saveTask(user.uid, newTask).catch((error) => {
+        console.error('Failed to save AI-generated task to Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [user]);
 

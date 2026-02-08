@@ -25,6 +25,7 @@ function Find-Git {
                 }
             }
         } catch {
+            Write-Warning "Failed to check path: $path - $_"
             continue
         }
     }

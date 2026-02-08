@@ -81,7 +81,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </button>
           <div>
-            <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">{user.name}</h1>
+            <h1 className="text-4xl font-black text-white uppercase tracking-tighter italic">{user.nickname}</h1>
             <p className="text-primary text-sm font-bold uppercase tracking-wider">Performance Level {user.level}</p>
           </div>
         </div>
@@ -100,7 +100,7 @@ const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </button>
           <div>
-            <h1 className="text-2xl font-black text-white uppercase tracking-tighter italic">{user.name}</h1>
+            <h1 className="text-2xl font-black text-white uppercase tracking-tighter italic">{user.nickname}</h1>
             <p className="text-primary text-xs font-bold uppercase tracking-wider">Performance Level {user.level}</p>
           </div>
         </div>

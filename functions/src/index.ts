@@ -28,7 +28,7 @@ import {defineSecret} from "firebase-functions/params";
 import {getFirestore, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {initializeApp} from "firebase-admin/app";
 import * as logger from "firebase-functions/logger";
-import {GoogleGenerativeAI, SchemaType} from "@google/generative-ai";
+import {GoogleGenAI, Type} from "@google/genai";
 import {Polar} from "@polar-sh/sdk";
 import {Webhook} from "svix";
 import {RateLimiter} from "limiter";
@@ -53,6 +53,10 @@ logger.info("✅ [INIT] Firestore connection established");
 logger.info("⚙️ [INIT] Setting global function options (maxInstances: 10)");
 setGlobalOptions({maxInstances: 10});
 logger.info("✅ [INIT] Cloud Functions initialization complete");
+
+// Gemini model to use
+// Using gemini-2.5-flash - latest, fastest model with free tier access
+const GEMINI_MODEL = "gemini-2.5-flash";
 
 // ==========================================
 // Rate Limiting
@@ -551,6 +555,38 @@ function getDisplayName(displayName: string | undefined, email: string | undefin
   return "Operative";
 }
 
+/**
+ * Generate a nickname for the user
+ * Priority: displayName > email prefix > generated default
+ */
+function generateNickname(displayName: string | undefined, email: string | undefined): string {
+  logger.info("🏷️ [generateNickname] Generating nickname", {
+    hasDisplayName: !!displayName,
+    hasEmail: !!email,
+  });
+
+  // 1. Use displayName if available (from OAuth)
+  if (displayName && displayName.trim()) {
+    logger.info(`✅ [generateNickname] Using display name as nickname: "${displayName}"`);
+    return displayName.trim();
+  }
+
+  // 2. Use email prefix if available
+  if (email) {
+    const emailPrefix = email.split("@")[0];
+    if (emailPrefix) {
+      logger.info(`🔄 [generateNickname] Using email prefix as nickname: "${emailPrefix}"`);
+      return emailPrefix;
+    }
+  }
+
+  // 3. Generate default with random digits
+  const randomDigits = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
+  const generatedNickname = `Agent-${randomDigits}`;
+  logger.info(`🎲 [generateNickname] Generated random nickname: "${generatedNickname}"`);
+  return generatedNickname;
+}
+
 // ==========================================
 // Cloud Functions
 // ==========================================
@@ -606,10 +642,11 @@ export const onUserCreate = beforeUserCreated(async (event) => {
     const authProvider = getAuthProvider(user.providerData);
     logger.info(`✅ [${functionName}] Step 1/5 complete: Auth provider = ${authProvider}`);
 
-    // Step 2: Get display name (fallback to email prefix)
-    logger.info(`🔄 [${functionName}] Step 2/5: Resolving display name...`);
+    // Step 2: Get display name and nickname
+    logger.info(`🔄 [${functionName}] Step 2/5: Resolving display name and nickname...`);
     const displayName = getDisplayName(user.displayName, user.email);
-    logger.info(`✅ [${functionName}] Step 2/5 complete: Display name = "${displayName}"`);
+    const nickname = generateNickname(user.displayName, user.email);
+    logger.info(`✅ [${functionName}] Step 2/5 complete: Display name = "${displayName}", Nickname = "${nickname}"`);
 
     // Step 3: Create default data structures
     logger.info(`🔄 [${functionName}] Step 3/5: Creating default data structures...`);
@@ -631,6 +668,7 @@ export const onUserCreate = beforeUserCreated(async (event) => {
       uid: user.uid,
       email: user.email || "",
       name: displayName,
+      nickname: nickname,
       photoURL: user.photoURL || null,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -1619,8 +1657,17 @@ export const getPolarInvoices = onCall(
     });
 
     try {
-      // Note: This is a placeholder - actual Polar API method may differ
-      // Check Polar SDK documentation for the correct method to fetch invoices
+      // IMPLEMENTATION NOTE: Verify this API call against Polar SDK documentation
+      // Based on Polar SDK v0.x, the correct method should be one of:
+      // - polar.subscriptions.get(subscriptionId) - to get subscription details
+      // - polar.checkouts.list() - to list checkouts/invoices
+      // - polar.orders.list({ subscriptionId }) - to get orders for a subscription
+      // 
+      // The current implementation uses subscriptions.get() which returns subscription data,
+      // not invoice data. To fetch actual invoices/orders, you may need:
+      // const orders = await polar.orders.list({ subscriptionId: polarSubscriptionId });
+      // 
+      // Please verify with: https://docs.polar.sh/api
       const invoices = await polar.subscriptions.get(polarSubscriptionId);
 
       const totalTime = Date.now() - startTime;
@@ -1787,14 +1834,13 @@ export const geminiProxy = onCall(
     logger.info(`✅ [${functionName}] API key retrieved successfully (length: ${apiKey.length} chars)`);
 
     // Step 6: Initialize Gemini AI
-    logger.info(`🤖 [${functionName}] Step 6: Initializing Google Generative AI client...`);
+    logger.info(`🤖 [${functionName}] Step 6: Initializing Google GenAI client...`);
 
     const initStartTime = Date.now();
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({model: "gemini-1.5-flash-latest"});
+    const ai = new GoogleGenAI({apiKey});
 
     logger.info(`✅ [${functionName}] Gemini AI client initialized`, {
-      model: "gemini-1.5-flash-latest",
+      model: GEMINI_MODEL,
       initTimeMs: Date.now() - initStartTime,
     });
 
@@ -1808,22 +1854,22 @@ export const geminiProxy = onCall(
       switch (action) {
       case "generateQuest":
         logger.info(`📨 [${functionName}] Dispatching to handleGenerateQuest...`);
-        result = await handleGenerateQuest(model, payload, requestId);
+        result = await handleGenerateQuest(ai, payload, requestId);
         break;
 
       case "analyzeTask":
         logger.info(`📨 [${functionName}] Dispatching to handleAnalyzeTask...`);
-        result = await handleAnalyzeTask(model, payload, requestId);
+        result = await handleAnalyzeTask(ai, payload, requestId);
         break;
 
       case "generateChatResponse":
         logger.info(`📨 [${functionName}] Dispatching to handleChatResponse...`);
-        result = await handleChatResponse(model, payload, requestId);
+        result = await handleChatResponse(ai, payload, requestId);
         break;
 
       case "generateFollowUpResponse":
         logger.info(`📨 [${functionName}] Dispatching to handleFollowUpResponse...`);
-        result = await handleFollowUpResponse(model, payload, requestId);
+        result = await handleFollowUpResponse(ai, payload, requestId);
         break;
 
       default:
@@ -1900,33 +1946,17 @@ export const geminiProxy = onCall(
 /**
  * Handle quest generation from a title
  */
-async function handleGenerateQuest(model: any, payload: { questTitle: string }, requestId: string) {
+async function handleGenerateQuest(ai: GoogleGenAI, payload: { questTitle: string }, requestId: string) {
   const handlerName = "handleGenerateQuest";
   const startTime = Date.now();
 
-  logger.info(`🎯 [${handlerName}] ══════════════════════════════════════`);
-  logger.info(`🎯 [${handlerName}] BEGIN - Quest Generation Handler`);
-  logger.info(`🆔 [${handlerName}] Request ID: ${requestId}`);
-  logger.info(`🎯 [${handlerName}] ══════════════════════════════════════`);
-
-  // Step 1: Validate input
-  logger.info(`📥 [${handlerName}] Step 1: Validating input payload...`);
+  logger.info(`🎯 [${handlerName}] BEGIN - Quest Generation Handler [${requestId}]`);
 
   const {questTitle} = payload;
-
   if (!questTitle) {
-    logger.error(`❌ [${handlerName}] Validation FAILED - Missing questTitle`);
-    logger.error(`❌ [${handlerName}] Payload received:`, {payload});
+    logger.error(`❌ [${handlerName}] Missing questTitle`);
     throw new HttpsError("invalid-argument", "Missing questTitle");
   }
-
-  logger.info(`✅ [${handlerName}] Input validated`, {
-    questTitle: questTitle,
-    titleLength: questTitle.length,
-  });
-
-  // Step 2: Construct prompt
-  logger.info(`📝 [${handlerName}] Step 2: Constructing AI prompt...`);
 
   const prompt = `Create a detailed quest breakdown for: "${questTitle}"
 
@@ -1953,99 +1983,40 @@ Guidelines:
 
 Return ONLY the JSON array, no markdown or explanation.`;
 
-  logger.info(`✅ [${handlerName}] Prompt constructed`, {
-    promptLength: prompt.length,
-    questTitle: questTitle,
-  });
-
-  // Step 3: Call Gemini API
-  logger.info(`🤖 [${handlerName}] Step 3: Calling Gemini API...`);
-  logger.info(`📨 [${handlerName}] Sending request to model.generateContent()`);
+  logger.info(`🤖 [${handlerName}] Calling Gemini API (${GEMINI_MODEL})...`);
 
   const apiStartTime = Date.now();
-  const result = await model.generateContent(prompt);
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: prompt,
+  });
   const apiTime = Date.now() - apiStartTime;
 
-  logger.info(`✅ [${handlerName}] Gemini API response received`, {
-    apiResponseTimeMs: apiTime,
-  });
-
-  // Step 4: Extract response text and token usage
-  logger.info(`📥 [${handlerName}] Step 4: Extracting response text and token usage...`);
-
-  const response = result.response;
-  const text = response.text();
+  const text = response.text || "";
 
   // Extract token usage metadata
-  const usageMetadata = response.usageMetadata || {};
+  const usageMetadata = response.usageMetadata || {} as any;
   const inputTokens = usageMetadata.promptTokenCount || 0;
   const outputTokens = usageMetadata.candidatesTokenCount || 0;
   const totalTokens = usageMetadata.totalTokenCount || 0;
 
-  logger.info(`✅ [${handlerName}] Response text extracted`, {
-    responseLength: text.length,
-    previewFirst100: text.substring(0, 100) + "...",
-  });
-
-  logger.info(`📊 [${handlerName}] Token usage:`, {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-  });
-
-  // Step 5: Parse JSON response
-  logger.info(`🔄 [${handlerName}] Step 5: Parsing JSON response...`);
+  logger.info(`✅ [${handlerName}] Response received (${apiTime}ms, ${totalTokens} tokens)`);
 
   try {
-    // Clean up the response (remove markdown code blocks if present)
-    logger.info(`🔄 [${handlerName}] Cleaning response text (removing markdown artifacts)...`);
-
     const cleanedText = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-    logger.info(`📝 [${handlerName}] Cleaned text prepared for parsing`, {
-      originalLength: text.length,
-      cleanedLength: cleanedText.length,
-    });
-
     const categories = JSON.parse(cleanedText);
-
-    logger.info(`✅ [${handlerName}] JSON parsed successfully`, {
-      categoryCount: categories.length,
-      categories: categories.map((c: any) => ({
-        title: c.title,
-        taskCount: c.tasks?.length || 0,
-      })),
-    });
-
-    // Calculate total tasks
     const totalTasks = categories.reduce((sum: number, cat: any) => sum + (cat.tasks?.length || 0), 0);
-    const totalTime = Date.now() - startTime;
 
-    logger.info(`🎯 [${handlerName}] ──────────────────────────────────────`);
-    logger.info(`✅ [${handlerName}] QUEST GENERATION COMPLETE`);
-    logger.info(`🎯 [${handlerName}] ──────────────────────────────────────`);
-    logger.info(`📤 [${handlerName}] Result summary:`, {
-      questTitle: questTitle,
-      categoriesGenerated: categories.length,
-      totalTasksGenerated: totalTasks,
-      apiTimeMs: apiTime,
-      totalHandlerTimeMs: totalTime,
+    logger.info(`✅ [${handlerName}] Quest generated`, {
+      phases: categories.length, tasks: totalTasks, ms: Date.now() - startTime,
     });
 
     return {success: true, data: categories, tokenUsage: {inputTokens, outputTokens, totalTokens}};
   } catch (parseError) {
-    const totalTime = Date.now() - startTime;
-
-    logger.error(`❌ [${handlerName}] JSON PARSE FAILED`);
-    logger.error(`❌ [${handlerName}] Parse error details:`, {
-      errorMessage: (parseError as Error).message,
-      rawResponseLength: text.length,
+    logger.error(`❌ [${handlerName}] JSON parse failed:`, {
+      error: (parseError as Error).message,
+      rawPreview: text.substring(0, 300),
     });
-    logger.error(`❌ [${handlerName}] Raw response that failed to parse:`, {
-      rawResponse: text.substring(0, 500) + (text.length > 500 ? "... (truncated)" : ""),
-    });
-    logger.info(`⏱️ [${handlerName}] Handler time before failure: ${totalTime}ms`);
-
     throw new HttpsError("internal", "Failed to generate quest structure");
   }
 }
@@ -2053,33 +2024,17 @@ Return ONLY the JSON array, no markdown or explanation.`;
 /**
  * Handle task analysis for difficulty and category suggestion
  */
-async function handleAnalyzeTask(model: any, payload: { taskTitle: string }, requestId: string) {
+async function handleAnalyzeTask(ai: GoogleGenAI, payload: { taskTitle: string }, requestId: string) {
   const handlerName = "handleAnalyzeTask";
   const startTime = Date.now();
 
-  logger.info(`🔍 [${handlerName}] ══════════════════════════════════════`);
-  logger.info(`🔍 [${handlerName}] BEGIN - Task Analysis Handler`);
-  logger.info(`🆔 [${handlerName}] Request ID: ${requestId}`);
-  logger.info(`🔍 [${handlerName}] ══════════════════════════════════════`);
-
-  // Step 1: Validate input
-  logger.info(`📥 [${handlerName}] Step 1: Validating input payload...`);
+  logger.info(`🔍 [${handlerName}] BEGIN - Task Analysis Handler [${requestId}]`);
 
   const {taskTitle} = payload;
-
   if (!taskTitle) {
-    logger.error(`❌ [${handlerName}] Validation FAILED - Missing taskTitle`);
-    logger.error(`❌ [${handlerName}] Payload received:`, {payload});
+    logger.error(`❌ [${handlerName}] Missing taskTitle`);
     throw new HttpsError("invalid-argument", "Missing taskTitle");
   }
-
-  logger.info(`✅ [${handlerName}] Input validated`, {
-    taskTitle: taskTitle,
-    titleLength: taskTitle.length,
-  });
-
-  // Step 2: Construct prompt
-  logger.info(`📝 [${handlerName}] Step 2: Constructing AI prompt...`);
 
   const prompt = `Analyze this task: "${taskTitle}"
 
@@ -2098,89 +2053,40 @@ Difficulty guide:
 
 Return ONLY the JSON object, no markdown or explanation.`;
 
-  logger.info(`✅ [${handlerName}] Prompt constructed`, {
-    promptLength: prompt.length,
-    taskTitle: taskTitle,
-  });
-
-  // Step 3: Call Gemini API
-  logger.info(`🤖 [${handlerName}] Step 3: Calling Gemini API...`);
-  logger.info(`📨 [${handlerName}] Sending request to model.generateContent()`);
+  logger.info(`🤖 [${handlerName}] Calling Gemini API (${GEMINI_MODEL})...`);
 
   const apiStartTime = Date.now();
-  const result = await model.generateContent(prompt);
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: prompt,
+  });
   const apiTime = Date.now() - apiStartTime;
 
-  logger.info(`✅ [${handlerName}] Gemini API response received`, {
-    apiResponseTimeMs: apiTime,
-  });
-
-  // Step 4: Extract response text and token usage
-  logger.info(`📥 [${handlerName}] Step 4: Extracting response text and token usage...`);
-
-  const response = result.response;
-  const text = response.text();
+  const text = response.text || "";
 
   // Extract token usage metadata
-  const usageMetadata = response.usageMetadata || {};
+  const usageMetadata = response.usageMetadata || {} as any;
   const inputTokens = usageMetadata.promptTokenCount || 0;
   const outputTokens = usageMetadata.candidatesTokenCount || 0;
   const totalTokens = usageMetadata.totalTokenCount || 0;
 
-  logger.info(`✅ [${handlerName}] Response text extracted`, {
-    responseLength: text.length,
-    previewFirst100: text.substring(0, 100) + (text.length > 100 ? "..." : ""),
-  });
-
-  logger.info(`📊 [${handlerName}] Token usage:`, {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-  });
-
-  // Step 5: Parse JSON response
-  logger.info(`🔄 [${handlerName}] Step 5: Parsing JSON response...`);
+  logger.info(`✅ [${handlerName}] Response received (${apiTime}ms, ${totalTokens} tokens)`);
 
   try {
-    logger.info(`🔄 [${handlerName}] Cleaning response text (removing markdown artifacts)...`);
-
     const cleanedText = text.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-
-    logger.info(`📝 [${handlerName}] Cleaned text prepared for parsing`, {
-      originalLength: text.length,
-      cleanedLength: cleanedText.length,
-    });
-
     const analysis = JSON.parse(cleanedText);
 
-    const totalTime = Date.now() - startTime;
-
-    logger.info(`🔍 [${handlerName}] ──────────────────────────────────────`);
-    logger.info(`✅ [${handlerName}] TASK ANALYSIS COMPLETE`);
-    logger.info(`🔍 [${handlerName}] ──────────────────────────────────────`);
-    logger.info(`📤 [${handlerName}] Analysis result:`, {
-      taskTitle: taskTitle,
-      suggestedDifficulty: analysis.difficulty,
-      suggestedCategory: analysis.skillCategory,
-      descriptionLength: analysis.suggestedDescription?.length || 0,
-      apiTimeMs: apiTime,
-      totalHandlerTimeMs: totalTime,
+    logger.info(`✅ [${handlerName}] Task analyzed`, {
+      difficulty: analysis.difficulty, category: analysis.skillCategory,
+      ms: Date.now() - startTime,
     });
 
     return {success: true, data: analysis, tokenUsage: {inputTokens, outputTokens, totalTokens}};
   } catch (parseError) {
-    const totalTime = Date.now() - startTime;
-
-    logger.error(`❌ [${handlerName}] JSON PARSE FAILED`);
-    logger.error(`❌ [${handlerName}] Parse error details:`, {
-      errorMessage: (parseError as Error).message,
-      rawResponseLength: text.length,
+    logger.error(`❌ [${handlerName}] JSON parse failed:`, {
+      error: (parseError as Error).message,
+      rawPreview: text.substring(0, 300),
     });
-    logger.error(`❌ [${handlerName}] Raw response that failed to parse:`, {
-      rawResponse: text.substring(0, 500) + (text.length > 500 ? "... (truncated)" : ""),
-    });
-    logger.info(`⏱️ [${handlerName}] Handler time before failure: ${totalTime}ms`);
-
     throw new HttpsError("internal", "Failed to analyze task");
   }
 }
@@ -2188,7 +2094,7 @@ Return ONLY the JSON object, no markdown or explanation.`;
 /**
  * Handle chat response generation with function calling
  */
-async function handleChatResponse(model: any, payload: {
+async function handleChatResponse(ai: GoogleGenAI, payload: {
   messages: any[];
   userInput: string;
   systemPrompt: string;
@@ -2197,375 +2103,191 @@ async function handleChatResponse(model: any, payload: {
   const handlerName = "handleChatResponse";
   const startTime = Date.now();
 
-  logger.info(`💬 [${handlerName}] ══════════════════════════════════════`);
-  logger.info(`💬 [${handlerName}] BEGIN - Chat Response Handler`);
-  logger.info(`🆔 [${handlerName}] Request ID: ${requestId}`);
-  logger.info(`💬 [${handlerName}] ══════════════════════════════════════`);
-
-  // Step 1: Extract and validate payload
-  logger.info(`📥 [${handlerName}] Step 1: Extracting and validating payload...`);
+  logger.info(`💬 [${handlerName}] BEGIN - Chat Response Handler [${requestId}]`);
 
   const {messages, userInput, systemPrompt, tools} = payload;
 
-  logger.info(`📝 [${handlerName}] Payload contents:`, {
-    messageCount: messages?.length || 0,
-    userInputLength: userInput?.length || 0,
-    hasSystemPrompt: !!systemPrompt,
-    systemPromptLength: systemPrompt?.length || 0,
-    toolCount: tools?.length || 0,
-    toolNames: tools?.map((t) => t.name) || [],
-  });
-
   if (!userInput) {
-    logger.error(`❌ [${handlerName}] Validation FAILED - Missing userInput`);
+    logger.error(`❌ [${handlerName}] Missing userInput`);
     throw new HttpsError("invalid-argument", "Missing userInput");
   }
 
-  logger.info(`✅ [${handlerName}] Payload validated successfully`);
-  logger.info(
-    `📝 [${handlerName}] User input preview: ` +
-    `"${userInput.substring(0, 100)}${userInput.length > 100 ? "..." : ""}"`
-  );
+  logger.info(`📝 [${handlerName}] ${messages?.length || 0} history msgs, ${tools?.length || 0} tools`);
 
-  // Step 2: Convert tools to Gemini format
-  logger.info(`🔄 [${handlerName}] Step 2: Converting tools to Gemini format...`);
-
+  // Convert tools to Gemini format
   const geminiTools = tools && tools.length > 0 ? [{
-    functionDeclarations: tools.map((tool) => {
-      logger.info(`  🔧 [${handlerName}] Converting tool: ${tool.name}`);
-      return {
-        name: tool.name,
-        description: tool.description,
-        parameters: convertToGeminiSchema(tool.parameters),
-      };
-    }),
+    functionDeclarations: tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: convertToolSchema(tool.parameters),
+    })),
   }] : undefined;
 
-  if (geminiTools) {
-    logger.info(`✅ [${handlerName}] Tools converted successfully`, {
-      functionCount: geminiTools[0].functionDeclarations.length,
-    });
-  } else {
-    logger.info(`⚠️ [${handlerName}] No tools provided - chat will run without function calling`);
-  }
-
-  // Step 3: Build chat history
-  logger.info(`🔄 [${handlerName}] Step 3: Building chat history...`);
-
-  let history = messages.map((msg, index) => {
-    const formattedMsg = {
+  // Build contents array from chat history (filter out tool notification messages)
+  let contents: any[] = (messages || [])
+    .filter((msg: any) => !msg.isTool)
+    .map((msg: any) => ({
       role: msg.role === "user" ? "user" : "model",
       parts: [{text: msg.text || ""}],
-    };
-    logger.info(
-      `  📜 [${handlerName}] Message ${index + 1}: ` +
-      `role="${formattedMsg.role}", length=${msg.text?.length || 0}`
-    );
-    return formattedMsg;
-  });
+    }));
 
-  // Gemini requires chat history to start with a user message
-  // Remove any leading model messages
-  while (history.length > 0 && history[0].role === "model") {
-    logger.info(`  ⚠️ [${handlerName}] Removing leading model message from history`);
-    history = history.slice(1);
+  // Gemini requires contents to start with a user message
+  while (contents.length > 0 && contents[0].role === "model") {
+    contents = contents.slice(1);
   }
 
-  logger.info(`✅ [${handlerName}] Chat history built`, {
-    totalMessages: history.length,
-  });
-
-  // Step 4: Create chat session
-  logger.info(`🤖 [${handlerName}] Step 4: Creating chat session...`);
+  // Add the new user message
+  contents.push({role: "user", parts: [{text: userInput}]});
 
   const effectiveSystemPrompt = systemPrompt || ASSISTANT_SYSTEM_PROMPT;
-  logger.info(
-    `📝 [${handlerName}] Using ${systemPrompt ? "custom" : "default"} ` +
-    `system prompt (${effectiveSystemPrompt.length} chars)`
-  );
 
-  const chat = model.startChat({
-    history,
-    systemInstruction: {
-      parts: [{text: effectiveSystemPrompt}],
-      role: "user",
-    },
-    tools: geminiTools,
-  });
-
-  logger.info(`✅ [${handlerName}] Chat session created successfully`);
-
-  // Step 5: Send message and get response
-  logger.info(`📨 [${handlerName}] Step 5: Sending message to Gemini...`);
-  logger.info(`📨 [${handlerName}] Message: "${userInput.substring(0, 50)}${userInput.length > 50 ? "..." : ""}"`);
+  logger.info(`🤖 [${handlerName}] Calling Gemini (${GEMINI_MODEL}) with ${contents.length} messages...`);
 
   const apiStartTime = Date.now();
-  const result = await chat.sendMessage(userInput);
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents,
+    config: {
+      systemInstruction: effectiveSystemPrompt,
+      ...(geminiTools ? {tools: geminiTools} : {}),
+    },
+  });
   const apiTime = Date.now() - apiStartTime;
-  const response = result.response;
 
   // Extract token usage metadata
-  const usageMetadata = response.usageMetadata || {};
+  const usageMetadata = response.usageMetadata || {} as any;
   const inputTokens = usageMetadata.promptTokenCount || 0;
   const outputTokens = usageMetadata.candidatesTokenCount || 0;
   const totalTokens = usageMetadata.totalTokenCount || 0;
 
-  logger.info(`✅ [${handlerName}] Gemini response received`, {
-    apiResponseTimeMs: apiTime,
-    hasCandidates: !!response.candidates,
-    candidateCount: response.candidates?.length || 0,
-  });
+  logger.info(`✅ [${handlerName}] Response received (${apiTime}ms, ${totalTokens} tokens)`);
 
-  logger.info(`📊 [${handlerName}] Token usage:`, {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-  });
-
-  // Step 6: Check for function calls
-  logger.info(`🔄 [${handlerName}] Step 6: Checking for function calls...`);
-
-  const functionCalls = response.functionCalls();
+  // Check for function calls
+  const functionCalls = response.functionCalls;
 
   if (functionCalls && functionCalls.length > 0) {
-    logger.info(`🔧 [${handlerName}] FUNCTION CALLS DETECTED`, {
-      functionCallCount: functionCalls.length,
-    });
+    const formattedCalls = functionCalls.map((fc: any, index: number) => ({
+      id: `call_${index}`,
+      name: fc.name,
+      args: fc.args,
+    }));
 
-    const formattedCalls = functionCalls.map((fc: any, index: number) => {
-      const formattedCall = {
-        id: `call_${index}`,
-        name: fc.name,
-        args: fc.args,
-      };
-      logger.info(`  📞 [${handlerName}] Function call ${index + 1}:`, {
-        id: formattedCall.id,
-        name: formattedCall.name,
-        argKeys: Object.keys(fc.args || {}),
-      });
-      return formattedCall;
-    });
+    // Serialize the model's content for follow-up (needed to send function results back)
+    const modelContent = response.candidates?.[0]?.content || null;
 
-    const totalTime = Date.now() - startTime;
-
-    logger.info(`💬 [${handlerName}] ──────────────────────────────────────`);
-    logger.info(`✅ [${handlerName}] CHAT RESPONSE COMPLETE (with function calls)`);
-    logger.info(`💬 [${handlerName}] ──────────────────────────────────────`);
-    logger.info(`📤 [${handlerName}] Response summary:`, {
-      responseType: "function_calls",
-      functionCallCount: formattedCalls.length,
-      functionNames: formattedCalls.map((fc: any) => fc.name),
-      apiTimeMs: apiTime,
-      totalHandlerTimeMs: totalTime,
+    const fnNames = formattedCalls.map((fc: any) => fc.name).join(", ");
+    logger.info(`🔧 [${handlerName}] Function calls: ${fnNames}`, {
+      ms: Date.now() - startTime,
     });
 
     return {
       success: true,
       data: {
         functionCalls: formattedCalls,
-        candidates: response.candidates,
+        modelContent: modelContent,
       },
       tokenUsage: {inputTokens, outputTokens, totalTokens},
     };
   }
 
-  // Step 7: Extract text response
-  logger.info(`📝 [${handlerName}] Step 7: Extracting text response...`);
+  // Text response
+  const responseText = response.text || "";
 
-  const responseText = response.text();
-  const totalTime = Date.now() - startTime;
-
-  logger.info(`💬 [${handlerName}] ──────────────────────────────────────`);
-  logger.info(`✅ [${handlerName}] CHAT RESPONSE COMPLETE (text response)`);
-  logger.info(`💬 [${handlerName}] ──────────────────────────────────────`);
-  logger.info(`📤 [${handlerName}] Response summary:`, {
-    responseType: "text",
-    responseLength: responseText.length,
-    responsePreview: responseText.substring(0, 100) + (responseText.length > 100 ? "..." : ""),
-    apiTimeMs: apiTime,
-    totalHandlerTimeMs: totalTime,
-  });
+  logger.info(`💬 [${handlerName}] Text response (${responseText.length} chars, ${Date.now() - startTime}ms)`);
 
   return {
     success: true,
     data: {
       text: responseText,
-      candidates: response.candidates,
     },
     tokenUsage: {inputTokens, outputTokens, totalTokens},
   };
 }
 
 /**
- * Handle follow-up response after function execution
+ * Handle follow-up response after function execution.
+ * Uses proper Gemini function response format to send results back to the model.
  */
-async function handleFollowUpResponse(model: any, payload: {
+async function handleFollowUpResponse(ai: GoogleGenAI, payload: {
   messages: any[];
   userInput: string;
   systemPrompt: string;
-  previousResponse: any;
+  modelContent: any;
   functionResponses: any[];
 }, requestId: string) {
   const handlerName = "handleFollowUpResponse";
   const startTime = Date.now();
 
-  logger.info(`🔄 [${handlerName}] ══════════════════════════════════════`);
-  logger.info(`🔄 [${handlerName}] BEGIN - Follow-Up Response Handler`);
-  logger.info(`🆔 [${handlerName}] Request ID: ${requestId}`);
-  logger.info(`🔄 [${handlerName}] ══════════════════════════════════════`);
+  logger.info(`🔄 [${handlerName}] BEGIN - Follow-Up Response Handler [${requestId}]`);
 
-  // Step 1: Extract payload
-  logger.info(`📥 [${handlerName}] Step 1: Extracting payload data...`);
+  const {messages, userInput, systemPrompt, modelContent, functionResponses} = payload;
 
-  const {messages, userInput, systemPrompt, previousResponse, functionResponses} = payload;
+  logger.info(`📝 [${handlerName}] History: ${messages?.length || 0} msgs, ` +
+    `${functionResponses?.length || 0} function responses`);
 
-  logger.info(`📝 [${handlerName}] Payload contents:`, {
-    messageCount: messages?.length || 0,
-    userInputLength: userInput?.length || 0,
-    hasSystemPrompt: !!systemPrompt,
-    hasPreviousResponse: !!previousResponse,
-    functionResponseCount: functionResponses?.length || 0,
-  });
-
-  // Step 2: Build base chat history
-  logger.info(`🔄 [${handlerName}] Step 2: Building base chat history from messages...`);
-
-  let history: any[] = messages.map((msg, index) => {
-    const formattedMsg = {
+  // Build contents array from chat history (filter out tool notification messages)
+  let contents: any[] = (messages || [])
+    .filter((msg: any) => !msg.isTool)
+    .map((msg: any) => ({
       role: msg.role === "user" ? "user" : "model",
       parts: [{text: msg.text || ""}],
-    };
-    logger.info(`  📜 [${handlerName}] Base message ${index + 1}: role="${formattedMsg.role}"`);
-    return formattedMsg;
-  });
+    }));
 
-  // Gemini requires chat history to start with a user message
-  // Remove any leading model messages
-  while (history.length > 0 && history[0].role === "model") {
-    logger.info(`  ⚠️ [${handlerName}] Removing leading model message from history`);
-    history = history.slice(1);
+  // Gemini requires contents to start with a user message
+  while (contents.length > 0 && contents[0].role === "model") {
+    contents = contents.slice(1);
   }
 
-  logger.info(`✅ [${handlerName}] Base history built with ${history.length} messages`);
+  // Add the user message that triggered the function call
+  contents.push({role: "user", parts: [{text: userInput}]});
 
-  // Step 3: Add user message that triggered function call
-  logger.info(`🔄 [${handlerName}] Step 3: Adding user message that triggered function call...`);
-
-  history.push({
-    role: "user",
-    parts: [{text: userInput}],
-  });
-
-  logger.info(`✅ [${handlerName}] User trigger message added`, {
-    userInputPreview: userInput?.substring(0, 50) + (userInput?.length > 50 ? "..." : ""),
-  });
-
-  // Step 4: Add model's function call response
-  logger.info(`🔄 [${handlerName}] Step 4: Adding model's previous function call response...`);
-
-  if (previousResponse?.candidates?.[0]?.content) {
-    history.push({
-      role: "model",
-      parts: previousResponse.candidates[0].content.parts,
-    });
-    logger.info(`✅ [${handlerName}] Previous model response added`, {
-      partsCount: previousResponse.candidates[0].content.parts?.length || 0,
-    });
+  // Add the model's function call response (preserves the function call parts)
+  if (modelContent) {
+    contents.push(modelContent);
+    logger.info(`✅ [${handlerName}] Model function call content added (${modelContent.parts?.length || 0} parts)`);
   } else {
-    logger.warn(`⚠️ [${handlerName}] No previous response content found to add`);
+    logger.warn(`⚠️ [${handlerName}] No model content - using text fallback`);
   }
 
-  // Step 5: Add function responses
-  logger.info(`🔄 [${handlerName}] Step 5: Processing function responses...`);
-
+  // Add function responses using proper Gemini functionResponse format
   if (functionResponses && functionResponses.length > 0) {
-    logger.info(`📝 [${handlerName}] Processing ${functionResponses.length} function response(s):`);
+    const functionResponseParts = functionResponses.map((fr: any) => ({
+      functionResponse: {
+        name: fr.name,
+        response: fr.response || {result: "completed"},
+      },
+    }));
 
-    functionResponses.forEach((fr, index) => {
-      logger.info(`  📞 [${handlerName}] Function response ${index + 1}:`, {
-        functionName: fr.name,
-        responseKeys: Object.keys(fr.response || {}),
-        responsePreview: JSON.stringify(fr.response).substring(0, 100),
-      });
-    });
+    contents.push({role: "user", parts: functionResponseParts});
 
-    const responseText = functionResponses.map((fr) =>
-      `Function ${fr.name} result: ${JSON.stringify(fr.response)}`
-    ).join("\n");
-
-    history.push({
-      role: "user",
-      parts: [{text: responseText}],
-    });
-
-    logger.info(`✅ [${handlerName}] Function responses added to history`, {
-      combinedResponseLength: responseText.length,
-    });
-  } else {
-    logger.warn(`⚠️ [${handlerName}] No function responses provided`);
+    logger.info(`✅ [${handlerName}] ${functionResponses.length} function response(s) added`);
   }
-
-  // Step 6: Create chat session
-  logger.info(`🤖 [${handlerName}] Step 6: Creating chat session...`);
 
   const effectiveSystemPrompt = systemPrompt || ASSISTANT_SYSTEM_PROMPT;
 
-  logger.info(`📝 [${handlerName}] Chat configuration:`, {
-    historyLength: history.length,
-    systemPromptType: systemPrompt ? "custom" : "default",
-    systemPromptLength: effectiveSystemPrompt.length,
-  });
-
-  const chat = model.startChat({
-    history,
-    systemInstruction: {
-      parts: [{text: effectiveSystemPrompt}],
-      role: "user",
-    },
-  });
-
-  logger.info(`✅ [${handlerName}] Chat session created`);
-
-  // Step 7: Send follow-up request
-  logger.info(`📨 [${handlerName}] Step 7: Sending follow-up request to Gemini...`);
-  logger.info(`📨 [${handlerName}] Requesting summary of completed actions...`);
+  logger.info(`🤖 [${handlerName}] Calling Gemini (${GEMINI_MODEL}) for follow-up...`);
 
   const apiStartTime = Date.now();
-  const result = await chat.sendMessage("Please provide a summary of what was done.");
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents,
+    config: {
+      systemInstruction: effectiveSystemPrompt,
+    },
+  });
   const apiTime = Date.now() - apiStartTime;
-  const response = result.response;
 
   // Extract token usage metadata
-  const usageMetadata = response.usageMetadata || {};
+  const usageMetadata = response.usageMetadata || {} as any;
   const inputTokens = usageMetadata.promptTokenCount || 0;
   const outputTokens = usageMetadata.candidatesTokenCount || 0;
   const totalTokens = usageMetadata.totalTokenCount || 0;
 
-  logger.info(`✅ [${handlerName}] Gemini follow-up response received`, {
-    apiResponseTimeMs: apiTime,
-  });
+  const responseText = response.text || "Actions completed.";
 
-  logger.info(`📊 [${handlerName}] Token usage:`, {
-    inputTokens,
-    outputTokens,
-    totalTokens,
-  });
-
-  // Step 8: Extract and return response
-  logger.info(`📥 [${handlerName}] Step 8: Extracting response text...`);
-
-  const responseText = response.text();
-  const totalTime = Date.now() - startTime;
-
-  logger.info(`🔄 [${handlerName}] ──────────────────────────────────────`);
-  logger.info(`✅ [${handlerName}] FOLLOW-UP RESPONSE COMPLETE`);
-  logger.info(`🔄 [${handlerName}] ──────────────────────────────────────`);
-  logger.info(`📤 [${handlerName}] Response summary:`, {
-    responseLength: responseText.length,
-    responsePreview: responseText.substring(0, 100) + (responseText.length > 100 ? "..." : ""),
-    functionResponsesProcessed: functionResponses?.length || 0,
-    apiTimeMs: apiTime,
-    totalHandlerTimeMs: totalTime,
+  logger.info(`✅ [${handlerName}] Follow-up complete`, {
+    apiMs: apiTime, chars: responseText.length,
+    totalMs: Date.now() - startTime,
   });
 
   return {
@@ -2677,104 +2399,39 @@ export const cleanupOldChatMessages = onSchedule(
 // ==========================================
 
 /**
- * Convert tool parameters to Gemini schema format
+ * Convert tool parameters to Gemini schema format using new SDK Type enum
  */
-function convertToGeminiSchema(params: any): any {
-  const helperName = "convertToGeminiSchema";
+function convertToolSchema(params: any): any {
+  if (!params) return {type: Type.OBJECT};
 
-  logger.info(`🔧 [${helperName}] Converting parameters to Gemini schema format...`);
-
-  if (!params) {
-    logger.info(`⚠️ [${helperName}] No params provided, returning default OBJECT type`);
-    return {type: SchemaType.OBJECT};
-  }
-
-  logger.info(`📝 [${helperName}] Input params type: ${params.type || "undefined"}`, {
-    hasProperties: !!params.properties,
-    propertyCount: params.properties ? Object.keys(params.properties).length : 0,
-    hasRequired: !!params.required,
-    requiredCount: params.required?.length || 0,
-  });
-
-  const convertType = (type: string): SchemaType => {
-    const upperType = type?.toUpperCase();
-    let result: SchemaType;
-
-    switch (upperType) {
-    case "STRING":
-      result = SchemaType.STRING;
-      break;
-    case "NUMBER":
-      result = SchemaType.NUMBER;
-      break;
-    case "BOOLEAN":
-      result = SchemaType.BOOLEAN;
-      break;
-    case "ARRAY":
-      result = SchemaType.ARRAY;
-      break;
+  const convertType = (type: string) => {
+    switch (type?.toUpperCase()) {
+    case "STRING": return Type.STRING;
+    case "NUMBER": return Type.NUMBER;
+    case "INTEGER": return Type.INTEGER;
+    case "BOOLEAN": return Type.BOOLEAN;
+    case "ARRAY": return Type.ARRAY;
     case "OBJECT":
-    default:
-      result = SchemaType.OBJECT;
-      break;
+    default: return Type.OBJECT;
     }
-
-    logger.info(`  🔄 [${helperName}] Type conversion: "${type}" → ${result}`);
-    return result;
   };
 
-  const convertSchema = (schema: any, depth = 0): any => {
-    const indent = "  ".repeat(depth);
+  const convertSchema = (schema: any): any => {
+    if (!schema) return {};
 
-    if (!schema) {
-      logger.info(`${indent}⚠️ [${helperName}] Empty schema at depth ${depth}`);
-      return {};
-    }
-
-    const result: any = {
-      type: convertType(schema.type),
-    };
-
-    if (schema.description) {
-      result.description = schema.description;
-      logger.info(`${indent}📝 [${helperName}] Added description: "${schema.description.substring(0, 30)}..."`);
-    }
-
-    if (schema.enum) {
-      result.enum = schema.enum;
-      logger.info(`${indent}📋 [${helperName}] Added enum values: [${schema.enum.join(", ")}]`);
-    }
-
+    const result: any = {type: convertType(schema.type)};
+    if (schema.description) result.description = schema.description;
+    if (schema.enum) result.enum = schema.enum;
     if (schema.properties) {
       result.properties = {};
-      const propKeys = Object.keys(schema.properties);
-      logger.info(`${indent}🔄 [${helperName}] Processing ${propKeys.length} properties...`);
-
       for (const [key, value] of Object.entries(schema.properties)) {
-        logger.info(`${indent}  ➕ [${helperName}] Converting property: "${key}"`);
-        result.properties[key] = convertSchema(value, depth + 1);
+        result.properties[key] = convertSchema(value);
       }
     }
-
-    if (schema.items) {
-      logger.info(`${indent}📦 [${helperName}] Processing array items schema...`);
-      result.items = convertSchema(schema.items, depth + 1);
-    }
-
-    if (schema.required) {
-      result.required = schema.required;
-      logger.info(`${indent}⚠️ [${helperName}] Required fields: [${schema.required.join(", ")}]`);
-    }
-
+    if (schema.items) result.items = convertSchema(schema.items);
+    if (schema.required) result.required = schema.required;
     return result;
   };
 
-  const convertedSchema = convertSchema(params);
-
-  logger.info(`✅ [${helperName}] Schema conversion complete`, {
-    resultType: convertedSchema.type,
-    resultPropertyCount: convertedSchema.properties ? Object.keys(convertedSchema.properties).length : 0,
-  });
-
-  return convertedSchema;
+  return convertSchema(params);
 }

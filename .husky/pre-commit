@@ -1,0 +1,12 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Scanning for secrets in staged files..."
+npx secretlint "**/*"
+
+if [ $? -ne 0 ]; then
+  echo "❌ Secret detection failed! Please remove any hardcoded secrets before committing."
+  exit 1
+fi
+
+echo "✅ No secrets detected. Commit proceeding..."

@@ -8,17 +8,19 @@ import { DEBUG_FLAGS } from "../config/debugFlags";
 // Type definitions for AI tools (matching Google GenAI format)
 type Type = "STRING" | "NUMBER" | "BOOLEAN" | "OBJECT" | "ARRAY";
 
+interface PropertySchema {
+  type: Type;
+  description?: string;
+  enum?: string[];
+  items?: PropertySchema;
+  properties?: Record<string, PropertySchema>;
+  required?: string[];
+}
+
 interface FunctionDeclaration {
   name: string;
   description: string;
-  parameters: {
-    type: Type;
-    properties?: Record<string, any>;
-    items?: any;
-    enum?: string[];
-    required?: string[];
-    description?: string;
-  };
+  parameters: PropertySchema;
 }
 
 /**
@@ -64,6 +66,11 @@ const getGeminiProxy = () => {
   return httpsCallable(functions, "geminiProxy");
 };
 
+// Helper to extract error code from unknown error
+const getErrorCode = (error: unknown): string | undefined => {
+  return (error && typeof error === 'object' && 'code' in error) ? (error as { code: string }).code : undefined;
+};
+
 /**
  * Generate a quest breakdown from a quest title.
  * This is used by the Quest Oracle feature.
@@ -94,11 +101,12 @@ export const generateQuest = async (questTitle: string): Promise<Array<{
     }
 
     throw new Error("Failed to generate quest");
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (DEBUG_FLAGS.oracle) console.error("Error generating quest:", error);
     
     // Provide user-friendly error messages
-    if (error.code === "unauthenticated") {
+    const errorCode = (error && typeof error === 'object' && 'code' in error) ? (error as { code: string }).code : undefined;
+    if (errorCode === "unauthenticated") {
       throw new Error("Please sign in to use AI features");
     }
     if (error.code === "permission-denied") {
@@ -143,17 +151,18 @@ export const analyzeTask = async (taskTitle: string): Promise<{
     }
 
     throw new Error("Failed to analyze task");
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (DEBUG_FLAGS.oracle) console.error("Error analyzing task:", error);
     
     // Provide user-friendly error messages
-    if (error.code === "unauthenticated") {
+    const errorCode = getErrorCode(error);
+    if (errorCode === "unauthenticated") {
       throw new Error("Please sign in to use AI features");
     }
-    if (error.code === "permission-denied") {
+    if (errorCode === "permission-denied") {
       throw new Error("You don't have permission to use this feature");
     }
-    if (error.code === "resource-exhausted") {
+    if (errorCode === "resource-exhausted") {
       throw new Error("Token limit reached. Please check your usage in Settings or upgrade your plan.");
     }
     
@@ -220,13 +229,18 @@ export const getAITools = (): FunctionDeclaration[] => {
 
   const createChallengeTool: FunctionDeclaration = {
     name: "create_challenge",
-    description: "Create a competitive challenge against a network connection. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' for the challenge. Example: For a fitness challenge, create phases like 'Week 1: Foundation', 'Week 2: Intensity', each with multiple specific tasks like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without tasks!",
+    description: "Create a challenge (competitive OR cooperative) with a network connection. You MUST ALWAYS generate a detailed breakdown of 'categories' (phases) and 'tasks' for the challenge. Example: For a fitness challenge, create phases like 'Week 1: Foundation', 'Week 2: Intensity', each with multiple specific tasks like 'Run 5km', 'Do 50 pushups', etc. NEVER create a challenge without tasks!",
     parameters: {
       type: "OBJECT",
       properties: {
         title: { type: "STRING", description: "Name of the challenge" },
         description: { type: "STRING", description: "Terms of the challenge" },
-        opponentName: { type: "STRING", description: "Name of the network connection to challenge (must match a connection in the list)" },
+        mode: { 
+          type: "STRING", 
+          enum: ["competitive", "coop"],
+          description: "Type of challenge: 'competitive' (race to finish first, one winner) or 'coop' (work together, shared progress)" 
+        },
+        opponentName: { type: "STRING", description: "Name of the network connection for this challenge (must match a connection in the list)" },
         categories: {
             type: "ARRAY",
             description: "Detailed breakdown of the challenge into phases/sections with tasks",
@@ -236,7 +250,7 @@ export const getAITools = (): FunctionDeclaration[] => {
                     title: { type: "STRING", description: "Phase title (e.g., 'Week 1: Fundamentals')" },
                     tasks: {
                         type: "ARRAY",
-                        description: "Actionable tasks for this phase that both you and your opponent will complete",
+                        description: "Actionable tasks for this phase that participants will complete",
                         items: {
                             type: "OBJECT",
                             properties: {
@@ -253,7 +267,7 @@ export const getAITools = (): FunctionDeclaration[] => {
             }
         }
       },
-      required: ["title", "opponentName", "categories"]
+      required: ["title", "mode", "opponentName", "categories"]
     }
   };
 
@@ -275,7 +289,7 @@ export const generateChatResponse = async (
     name: string;
     args: any;
   }>;
-  candidates?: any;
+  modelContent?: any;
 }> => {
   try {
     // Verify user is authenticated
@@ -299,22 +313,23 @@ export const generateChatResponse = async (
       return {
         text: result.data.data.text,
         functionCalls: result.data.data.functionCalls,
-        candidates: result.data.data.candidates,
+        modelContent: result.data.data.modelContent,
       };
     }
 
     throw new Error("Failed to generate chat response");
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (DEBUG_FLAGS.oracle) console.error("Error generating chat response:", error);
     
     // Provide user-friendly error messages
-    if (error.code === "unauthenticated") {
+    const errorCode = getErrorCode(error);
+    if (errorCode === "unauthenticated") {
       throw new Error("Please sign in to use AI features");
     }
-    if (error.code === "permission-denied") {
+    if (errorCode === "permission-denied") {
       throw new Error("You don't have permission to use this feature");
     }
-    if (error.code === "resource-exhausted") {
+    if (errorCode === "resource-exhausted") {
       throw new Error("Token limit reached. Please check your usage in Settings or upgrade your plan.");
     }
     
@@ -330,7 +345,7 @@ export const generateFollowUpResponse = async (
   messages: ChatMessage[],
   userInput: string,
   systemPrompt: string,
-  previousResponse: any,
+  modelContent: any,
   functionResponses: any[]
 ): Promise<string> => {
   try {
@@ -347,7 +362,7 @@ export const generateFollowUpResponse = async (
         messages,
         userInput,
         systemPrompt,
-        previousResponse,
+        modelContent,
         functionResponses,
       },
     });
@@ -357,17 +372,18 @@ export const generateFollowUpResponse = async (
     }
 
     throw new Error("Failed to generate follow-up response");
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (DEBUG_FLAGS.oracle) console.error("Error generating follow-up response:", error);
     
     // Provide user-friendly error messages
-    if (error.code === "unauthenticated") {
+    const errorCode = getErrorCode(error);
+    if (errorCode === "unauthenticated") {
       throw new Error("Please sign in to use AI features");
     }
-    if (error.code === "permission-denied") {
+    if (errorCode === "permission-denied") {
       throw new Error("You don't have permission to use this feature");
     }
-    if (error.code === "resource-exhausted") {
+    if (errorCode === "resource-exhausted") {
       throw new Error("Token limit reached. Please check your usage in Settings or upgrade your plan.");
     }
     

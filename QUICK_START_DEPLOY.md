@@ -8,17 +8,19 @@
 
 ### 1. Set Up Production Environment (2 min)
 
-Copy the production template to create your `.env` file:
+Copy the template to create your `.env` file:
 
 **Windows PowerShell:**
 ```powershell
-Copy-Item .env.production.example .env
+Copy-Item .env.example .env
 ```
 
 **macOS/Linux:**
 ```bash
-cp .env.production.example .env
+cp .env.example .env
 ```
+
+**Important:** Edit `.env` and replace the placeholder values with your actual Firebase configuration!
 
 ### 2. Configure Firebase Secrets (2 min)
 

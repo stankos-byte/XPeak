@@ -26,7 +26,7 @@ const Login = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [authMode, setAuthMode] = useState<'magic-link' | 'password'>('magic-link');
+  const [authMode, setAuthMode] = useState<'magic-link' | 'password'>('password');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -338,17 +338,6 @@ const Login = () => {
           <div className="flex gap-2 mb-6">
             <button
               type="button"
-              onClick={() => setAuthMode('magic-link')}
-              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-                authMode === 'magic-link'
-                  ? 'bg-[#3b82f6] text-white'
-                  : 'bg-[#3a3447] text-gray-400 hover:text-white'
-              }`}
-            >
-              Magic Link
-            </button>
-            <button
-              type="button"
               onClick={() => setAuthMode('password')}
               className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
                 authMode === 'password'
@@ -357,6 +346,17 @@ const Login = () => {
               }`}
             >
               Password
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode('magic-link')}
+              className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                authMode === 'magic-link'
+                  ? 'bg-[#3b82f6] text-white'
+                  : 'bg-[#3a3447] text-gray-400 hover:text-white'
+              }`}
+            >
+              Magic Link
             </button>
           </div>
 

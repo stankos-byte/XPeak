@@ -56,7 +56,7 @@ const App: React.FC = () => {
   const userManager = useUserManager();
   const taskManager = useTaskManager(userManager.applyGlobalXPChange, userManager.saveTemplate);
   const questManager = useQuestManager(userManager.applyGlobalXPChange);
-  const challengeManager = useChallengeManager(userManager.applyGlobalXPChange);
+  const challengeManager = useChallengeManager(userManager.applyGlobalXPChange, userManager.user.uid);
   const timer = useTimer(25 * 60, 5 * 60);
 
   // Local UI state
@@ -66,15 +66,15 @@ const App: React.FC = () => {
   
   // AI Assistant state
   const [aiMessages, setAiMessages] = useState<ChatMessage[]>([
-    { id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active tasks, and network protocols. How may I assist in optimizing your total XP today?` }
+    { id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.nickname}. I am your Performance Analytics Assistant. I have access to your skill matrix, active tasks, and network protocols. How may I assist in optimizing your total XP today?` }
   ]);
 
-  // Update AI message when user name changes
+  // Update AI message when user nickname changes
   useEffect(() => {
     if (aiMessages.length === 1 && aiMessages[0].id === 'init') {
-      setAiMessages([{ id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.name}. I am your Performance Analytics Assistant. I have access to your skill matrix, active tasks, and network protocols. How may I assist in optimizing your total XP today?` }]);
+      setAiMessages([{ id: 'init', role: 'model', text: `System Online. Greetings, ${userManager.user.nickname}. I am your Performance Analytics Assistant. I have access to your skill matrix, active tasks, and network protocols. How may I assist in optimizing your total XP today?` }]);
     }
-  }, [userManager.user.name]);
+  }, [userManager.user.nickname]);
 
   // Wrapper functions for task handlers
   const handleCompleteTask = (id: string) => {
@@ -410,7 +410,7 @@ const App: React.FC = () => {
 
       <FeedbackModal isOpen={isFeedbackOpen} onClose={() => setIsFeedbackOpen(false)} />
       
-      {isSettingsOpen && <SettingsView user={userManager.user} onClose={() => setIsSettingsOpen(false)} />}
+      {isSettingsOpen && <SettingsView user={userManager.user} onClose={() => setIsSettingsOpen(false)} onUpdateNickname={userManager.updateNickname} />}
       
       {userManager.showLevelUp && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background/95 backdrop-blur-3xl animate-in zoom-in-95 duration-700">

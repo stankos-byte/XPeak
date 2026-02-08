@@ -32,8 +32,9 @@ class StorageService {
         localStorage.setItem(ANON_SESSION_KEY, sessionId);
       }
       return sessionId;
-    } catch {
+    } catch (error) {
       // Fallback if localStorage fails
+      if (DEBUG_FLAGS.storage) console.error('Error accessing anonymous session:', error);
       return 'anon_fallback';
     }
   }
@@ -155,7 +156,8 @@ class StorageService {
       localStorage.setItem(testKey, 'test');
       localStorage.removeItem(testKey);
       return true;
-    } catch {
+    } catch (error) {
+      if (DEBUG_FLAGS.storage) console.error('Error testing localStorage availability:', error);
       return false;
     }
   }

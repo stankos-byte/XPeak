@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, LogOut, Trash2, AlertTriangle, Calendar, ExternalLink, Zap } from 'lucide-react';
+import { X, User, Image, Mail, Crown, Palette, Sparkles, CreditCard, Lock, LogOut, Trash2, AlertTriangle, Calendar, ExternalLink, Zap, Save, Pencil } from 'lucide-react';
 import { UserProfile } from '../../types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -14,19 +14,30 @@ import { getUsageSummary, estimateRemainingConversations } from '../../services/
 interface SettingsViewProps {
   user: UserProfile;
   onClose: () => void;
+  onUpdateNickname?: (nickname: string) => void;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
+const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose, onUpdateNickname }) => {
   const [activeTab, setActiveTab] = useState<'informations' | 'customizations'>('informations');
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isCanceling, setIsCanceling] = useState(false);
   const [showBillingManagement, setShowBillingManagement] = useState(false);
+  const [isEditingNickname, setIsEditingNickname] = useState(false);
+  const [tempNickname, setTempNickname] = useState(user.nickname);
   const { theme, setTheme } = useTheme();
   const { signOut, deleteAccount, user: authUser } = useAuth();
   const navigate = useNavigate();
   const { subscription, isLoading: isSubscriptionLoading, isPro } = useSubscription();
+
+  const handleSaveNickname = () => {
+    if (tempNickname.trim() && onUpdateNickname) {
+      onUpdateNickname(tempNickname.trim());
+      setIsEditingNickname(false);
+      toast.success('Nickname updated successfully');
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -376,10 +387,49 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
 
           {activeTab === 'customizations' && (
             <div className="space-y-8">
-              {/* Profile Picture */}
+              {/* Nickname */}
               <div className="space-y-3">
                 <div className="flex items-center gap-3 text-secondary">
                   <User size={20} />
+                  <span className="text-sm font-medium uppercase tracking-wider">Nickname</span>
+                </div>
+                <div className="bg-background border border-secondary/20 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="text"
+                      value={tempNickname}
+                      onChange={(e) => setTempNickname(e.target.value)}
+                      disabled={!isEditingNickname}
+                      className="flex-1 bg-transparent text-white text-lg font-semibold focus:outline-none disabled:opacity-60"
+                      placeholder="Enter your nickname"
+                      maxLength={20}
+                    />
+                    {isEditingNickname ? (
+                      <button
+                        onClick={handleSaveNickname}
+                        className="p-2 rounded-lg bg-primary text-background hover:bg-primary/90 transition-colors"
+                      >
+                        <Save size={18} />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setIsEditingNickname(true)}
+                        className="p-2 rounded-lg bg-surface border border-secondary/20 text-secondary hover:text-primary hover:border-primary/40 transition-colors"
+                      >
+                        <Pencil size={18} />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-secondary text-xs mt-2">This is how others will see you</p>
+                </div>
+              </div>
+
+              <div className="border-t border-secondary/10 my-6"></div>
+
+              {/* Profile Picture */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 text-secondary">
+                  <Image size={20} />
                   <span className="text-sm font-medium uppercase tracking-wider">Profile Picture</span>
                 </div>
                 <div className="flex items-center gap-6">
@@ -390,7 +440,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ user, onClose }) => {
                     </button>
                   </div>
                   <div className="flex-1">
-                    <h3 className="text-white font-bold text-lg mb-1">{user.name}</h3>
+                    <h3 className="text-white font-bold text-lg mb-1">{user.nickname}</h3>
                     <p className="text-secondary text-sm">Level {user.level} • {user.totalXP} XP</p>
                     <p className="text-secondary text-xs mt-2">Click to upload new profile picture</p>
                   </div>

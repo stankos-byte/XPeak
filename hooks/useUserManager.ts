@@ -25,7 +25,7 @@ import {
   saveTemplate,
   deleteTemplateData
 } from '../services/firestoreDataService';
-import { getUserDocument } from '../services/firestoreUserService';
+import { getUserDocument, updateUserNickname } from '../services/firestoreUserService';
 
 const DEFAULT_LAYOUT: ProfileLayout = { 
   widgets: [
@@ -44,7 +44,8 @@ const getDefaultUser = (): UserProfile => {
     skills[cat] = { category: cat, xp: 0, level: 0 };
   });
   return { 
-    name: 'Protocol-01', 
+    name: 'Protocol-01',
+    nickname: 'Protocol-01',
     totalXP: 0, 
     level: 0, 
     skills, 
@@ -104,6 +105,7 @@ interface UseUserManagerReturn {
     skillAmount?: number
   ) => void;
   updateIdentity: (identity: string) => void;
+  updateNickname: (nickname: string) => void;
   addGoal: (title: string) => void;
   toggleGoal: (id: string) => void;
   deleteGoal: (id: string) => void;
@@ -163,8 +165,18 @@ export const useUserManager = (): UseUserManagerReturn => {
           // Get history from subcollection
           const history = await getHistory(authUser.uid);
 
+          // Migration: If nickname is missing, use name as default and update Firestore
+          const nickname = firestoreUser.nickname || firestoreUser.name;
+          if (!firestoreUser.nickname) {
+            console.log('🔄 Migrating user: Adding nickname field from name');
+            updateUserNickname(authUser.uid, nickname).catch(error => {
+              console.error('Failed to migrate nickname:', error);
+            });
+          }
+
           const userProfile: UserProfile = {
             name: firestoreUser.name,
+            nickname: nickname,
             totalXP: firestoreUser.totalXP,
             level: firestoreUser.level,
             skills: firestoreSkills,
@@ -349,7 +361,10 @@ export const useUserManager = (): UseUserManagerReturn => {
         const dateKey = new Date().toISOString().split('T')[0];
         const historyEntry = activeHistory.find(h => h.date === dateKey);
         if (historyEntry) {
-          saveHistoryEntry(authUser.uid, historyEntry).catch(console.error);
+          saveHistoryEntry(authUser.uid, historyEntry).catch((error) => {
+            console.error('Failed to save history entry to Firestore:', error);
+            // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+          });
         }
       }
 
@@ -383,7 +398,22 @@ export const useUserManager = (): UseUserManagerReturn => {
     
     // Save to Firestore if authenticated
     if (authUser) {
-      updateUserIdentity(authUser.uid, identity).catch(console.error);
+      updateUserIdentity(authUser.uid, identity).catch((error) => {
+        console.error('Failed to update user identity in Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
+    }
+  }, [authUser]);
+
+  const updateNickname = useCallback((nickname: string) => {
+    setUser(prev => ({ ...prev, nickname }));
+    
+    // Save to Firestore if authenticated
+    if (authUser) {
+      updateUserNickname(authUser.uid, nickname).catch((error) => {
+        console.error('Failed to update user nickname in Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [authUser]);
 
@@ -392,7 +422,10 @@ export const useUserManager = (): UseUserManagerReturn => {
     
     if (authUser) {
       // Save to Firestore subcollection
-      saveGoal(authUser.uid, newGoal).catch(console.error);
+      saveGoal(authUser.uid, newGoal).catch((error) => {
+        console.error('Failed to save goal to Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     } else {
       // Update local state for non-authenticated users
       setGoals(prev => [newGoal, ...prev]);
@@ -404,7 +437,10 @@ export const useUserManager = (): UseUserManagerReturn => {
       // Update in Firestore subcollection
       const goal = goals.find(g => g.id === id);
       if (goal) {
-        updateGoalData(authUser.uid, id, { completed: !goal.completed }).catch(console.error);
+        updateGoalData(authUser.uid, id, { completed: !goal.completed }).catch((error) => {
+          console.error('Failed to update goal in Firestore:', error);
+          // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+        });
       }
     } else {
       // Update local state for non-authenticated users
@@ -415,7 +451,10 @@ export const useUserManager = (): UseUserManagerReturn => {
   const deleteGoal = useCallback((id: string) => {
     if (authUser) {
       // Delete from Firestore subcollection
-      deleteGoalData(authUser.uid, id).catch(console.error);
+      deleteGoalData(authUser.uid, id).catch((error) => {
+        console.error('Failed to delete goal from Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     } else {
       // Update local state for non-authenticated users
       setGoals(prev => prev.filter(g => g.id !== id));
@@ -427,7 +466,10 @@ export const useUserManager = (): UseUserManagerReturn => {
     
     // Save to Firestore if authenticated
     if (authUser) {
-      updateUserLayout(authUser.uid, layout).catch(console.error);
+      updateUserLayout(authUser.uid, layout).catch((error) => {
+        console.error('Failed to update user layout in Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     }
   }, [authUser]);
 
@@ -444,7 +486,10 @@ export const useUserManager = (): UseUserManagerReturn => {
   const deleteTemplate = useCallback((id: string) => {
     if (authUser) {
       // Delete from Firestore subcollection
-      deleteTemplateData(authUser.uid, id).catch(console.error);
+      deleteTemplateData(authUser.uid, id).catch((error) => {
+        console.error('Failed to delete template from Firestore:', error);
+        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+      });
     } else {
       // Update local state for non-authenticated users
       setTemplates(prev => prev.filter(t => t.id !== id));
@@ -464,6 +509,7 @@ export const useUserManager = (): UseUserManagerReturn => {
     levelProgress,
     applyGlobalXPChange,
     updateIdentity,
+    updateNickname,
     addGoal,
     toggleGoal,
     deleteGoal,

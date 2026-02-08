@@ -30,7 +30,8 @@ Transform your daily life into an epic RPG adventure! XPeak helps you level up b
 
 ```bash
 # 1. Set up production environment
-cp .env.production.example .env
+cp .env.example .env
+# Edit .env and fill in your Firebase configuration
 
 # 2. Configure secrets
 firebase functions:secrets:set GEMINI_API_KEY

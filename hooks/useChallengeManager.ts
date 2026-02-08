@@ -22,7 +22,8 @@ interface UseChallengeManagerReturn {
 }
 
 export const useChallengeManager = (
-  onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void
+  onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void,
+  currentUserId?: string
 ): UseChallengeManagerReturn => {
   // Initialize with cached data or fallback to mock data
   const [challenges, setChallenges] = useState<FriendChallenge[]>(() => {
@@ -42,14 +43,19 @@ export const useChallengeManager = (
     let isMounted = true;
 
     // Initialize service (loads from cache or fetches)
-    socialService.initialize().then(({ operatives, contracts }) => {
-      if (isMounted) {
-        setFriends(operatives);
-        setChallenges(contracts);
+    const initializeData = async () => {
+      try {
+        const { operatives, contracts } = await socialService.initialize();
+        if (isMounted) {
+          setFriends(operatives);
+          setChallenges(contracts);
+        }
+      } catch (error) {
+        if (DEBUG_FLAGS.challenges) console.error('Failed to initialize social service:', error);
       }
-    }).catch((error) => {
-      if (DEBUG_FLAGS.challenges) console.error(error);
-    });
+    };
+    
+    initializeData();
 
     // Subscribe to operatives updates (ready for Firestore onSnapshot)
     const unsubscribeOperatives = socialService.onOperativesChange((operatives) => {
@@ -91,8 +97,7 @@ export const useChallengeManager = (
     setUser: React.Dispatch<React.SetStateAction<UserProfile>>,
     onXPChange: (amount: number, historyId: string, popups: Record<string, number>, skillCategory?: SkillCategory, skillAmount?: number) => void
   ) => {
-    // TODO: Replace with actual user ID from auth context
-    const currentUserId = 'currentUser';
+    const userId = currentUserId || user.uid || 'currentUser';
     
     setChallenges((prev: FriendChallenge[]) => {
       const updated = prev.map((challenge: FriendChallenge) => {
@@ -109,14 +114,14 @@ export const useChallengeManager = (
           tasks: cat.tasks.map((task: ChallengeQuestTask) => {
             if (task.task_id !== taskId) return task;
             
-            const currentStatus = task.statusByUser[currentUserId] || 'pending';
+            const currentStatus = task.statusByUser[userId] || 'pending';
             const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
             
             return { 
               ...task, 
               statusByUser: {
                 ...task.statusByUser,
-                [currentUserId]: newStatus
+                [userId]: newStatus
               },
               // For coop mode, track who completed it
               completedBy: isCoop && newStatus === 'completed' ? user.name : 
@@ -131,7 +136,7 @@ export const useChallengeManager = (
       // Check if all tasks are now completed by this user
       const allTasksCompleted = updatedCategories.every((cat: ChallengeQuestCategory) => 
         cat.tasks.every((task: ChallengeQuestTask) => 
-          task.statusByUser[currentUserId] === 'completed'
+          task.statusByUser[userId] === 'completed'
         )
       );
 
@@ -190,8 +195,7 @@ export const useChallengeManager = (
   }, []);
 
   const handleCreateChallenge = useCallback((data: { title: string; description: string; partnerIds: string[]; categories: ChallengeQuestCategory[]; mode: ChallengeModeType }) => {
-    // TODO: Replace with actual user ID from auth context
-    const currentUserId = 'currentUser';
+    const userId = currentUserId || 'currentUser';
     
     // Helper to create expiration date (7 days from now)
     const createExpiresAt = (): string => {
@@ -221,8 +225,8 @@ export const useChallengeManager = (
         id: crypto.randomUUID(),
         title: data.title,
         description: data.description || '',
-        creatorUID: currentUserId,
-        partnerIds: [currentUserId, ...data.partnerIds],
+        creatorUID: userId,
+        partnerIds: [userId, ...data.partnerIds],
         mode: data.mode || 'competitive',
         status: 'active',
         categories: data.categories || [],
@@ -251,8 +255,7 @@ export const useChallengeManager = (
   }, []);
 
   const handleAiCreateChallenge = useCallback((challenge: Partial<FriendChallenge>) => {
-    // TODO: Replace with actual user ID from auth context
-    const currentUserId = 'currentUser';
+    const userId = currentUserId || 'currentUser';
     
     // Helper to create expiration date (7 days from now)
     const createExpiresAt = (): string => {
@@ -266,8 +269,8 @@ export const useChallengeManager = (
         id: crypto.randomUUID(),
         title: challenge.title || 'New Challenge',
         description: challenge.description || 'Defeat your opponent.',
-        creatorUID: currentUserId,
-        partnerIds: challenge.partnerIds || [currentUserId, '1'],
+        creatorUID: userId,
+        partnerIds: challenge.partnerIds || [userId, '1'],
         mode: challenge.mode || 'competitive',
         status: 'active',
         categories: challenge.categories || [],

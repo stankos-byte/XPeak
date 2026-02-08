@@ -104,6 +104,7 @@ export interface DailyActivity {
 
 export interface UserProfile {
   name: string;
+  nickname: string;
   totalXP: number;
   level: number;
   skills: Record<SkillCategory, SkillProgress>;
@@ -129,6 +130,7 @@ export interface XPResult {
 export interface Friend {
   id: string;
   name: string;
+  nickname: string;
   level: number;
   xp: number;
   status: 'online' | 'offline' | 'away' | 'busy';

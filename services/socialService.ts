@@ -25,11 +25,11 @@ const CACHE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
 
 // Mock data fallback
 const MOCK_OPERATIVES: Operative[] = [
-  { id: '1', name: 'Cyber-Stalker', level: 12, xp: 4500, status: 'online', lastActive: 'Now', color: '#ef4444' },
-  { id: '2', name: 'Neon-Drifter', level: 9, xp: 3200, status: 'offline', lastActive: '2h ago', color: '#10b981' },
-  { id: '3', name: 'Null-Pointer', level: 10, xp: 3850, status: 'online', lastActive: '5m ago', color: '#f59e0b' },
-  { id: '4', name: 'Void-Walker', level: 8, xp: 2100, status: 'busy', lastActive: '1d ago', color: '#a855f7' },
-  { id: '5', name: 'Glitch-Witch', level: 15, xp: 6200, status: 'offline', lastActive: '3d ago', color: '#ec4899' },
+  { id: '1', name: 'Cyber-Stalker', nickname: 'Cyber-Stalker', level: 12, xp: 4500, status: 'online', lastActive: 'Now', color: '#ef4444' },
+  { id: '2', name: 'Neon-Drifter', nickname: 'Neon-Drifter', level: 9, xp: 3200, status: 'offline', lastActive: '2h ago', color: '#10b981' },
+  { id: '3', name: 'Null-Pointer', nickname: 'Null-Pointer', level: 10, xp: 3850, status: 'online', lastActive: '5m ago', color: '#f59e0b' },
+  { id: '4', name: 'Void-Walker', nickname: 'Void-Walker', level: 8, xp: 2100, status: 'busy', lastActive: '1d ago', color: '#a855f7' },
+  { id: '5', name: 'Glitch-Witch', nickname: 'Glitch-Witch', level: 15, xp: 6200, status: 'offline', lastActive: '3d ago', color: '#ec4899' },
 ];
 
 // Helper to create expiration date from duration string
@@ -105,7 +105,8 @@ const getCacheTimestamp = (): number | null => {
   try {
     const timestamp = localStorage.getItem(CACHE_TIMESTAMP_KEY);
     return timestamp ? parseInt(timestamp, 10) : null;
-  } catch {
+  } catch (error) {
+    if (DEBUG_FLAGS.storage) console.error('Error getting cache timestamp:', error);
     return null;
   }
 };
@@ -204,10 +205,10 @@ export class SocialService {
       
       // Fetch fresh data in background (don't await)
       this.fetchOperatives().catch((error) => {
-        if (DEBUG_FLAGS.social) console.error(error);
+        if (DEBUG_FLAGS.social) console.error('Background fetch of operatives failed:', error);
       });
       this.fetchContracts().catch((error) => {
-        if (DEBUG_FLAGS.social) console.error(error);
+        if (DEBUG_FLAGS.social) console.error('Background fetch of contracts failed:', error);
       });
       
       return { operatives: cachedOperatives, contracts: cachedContracts };
@@ -234,11 +235,21 @@ export class SocialService {
 
     this.fetchOperativesPromise = (async () => {
       try {
-        // TODO: Replace with actual API call
-        // Example: const response = await fetch('/api/operatives');
+        // IMPLEMENTATION NOTE: Currently using mock data for development
+        // To integrate with real backend:
+        // 1. Uncomment and configure the API endpoint below
+        // 2. Update the response parsing as needed
+        // 3. Consider using Firebase Firestore queries instead:
+        //    const operativesRef = collection(db, 'friends');
+        //    const q = query(operativesRef, where('userId', '==', currentUserId));
+        //    const snapshot = await getDocs(q);
+        //    const operatives = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Example REST API call:
+        // const response = await fetch('/api/operatives');
         // const operatives = await response.json();
         
-        // Simulate network delay
+        // Simulate network delay for mock data
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const operatives = [...MOCK_OPERATIVES];
@@ -276,11 +287,21 @@ export class SocialService {
 
     this.fetchContractsPromise = (async () => {
       try {
-        // TODO: Replace with actual API call
-        // Example: const response = await fetch('/api/contracts');
+        // IMPLEMENTATION NOTE: Currently using mock data for development
+        // To integrate with real backend:
+        // 1. Uncomment and configure the API endpoint below
+        // 2. Update the response parsing as needed
+        // 3. Consider using Firebase Firestore queries instead:
+        //    const contractsRef = collection(db, 'challenges');
+        //    const q = query(contractsRef, where('partnerIds', 'array-contains', currentUserId));
+        //    const snapshot = await getDocs(q);
+        //    const contracts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Example REST API call:
+        // const response = await fetch('/api/contracts');
         // const contracts = await response.json();
         
-        // Simulate network delay
+        // Simulate network delay for mock data
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const contracts = [...MOCK_CONTRACTS];
