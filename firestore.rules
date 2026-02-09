@@ -105,12 +105,10 @@ service cloud.firestore {
     // ==========================================
     match /friendRequests/{requestId} {
       // Allow reading requests where user is sender or recipient
+      // Note: 'read' covers both 'get' and 'list' operations with proper filtering
       allow read: if isAuthenticated() 
                   && (resource.data.fromUID == request.auth.uid 
                       || resource.data.toUID == request.auth.uid);
-      
-      // Allow listing/querying requests for the authenticated user
-      allow list: if isAuthenticated();
       
       // Sender can create requests (must set themselves as fromUID)
       allow create: if isAuthenticated() 
@@ -164,6 +162,15 @@ service cloud.firestore {
       }
       
       // Default: deny access to other config documents
+      allow read, write: if false;
+    }
+    
+    // ==========================================
+    // RATE LIMITS COLLECTION
+    // ==========================================
+    match /rateLimits/{userId} {
+      // Only Cloud Functions can read/write rate limit data
+      // Users should never directly access this collection
       allow read, write: if false;
     }
   }

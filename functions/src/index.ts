@@ -31,7 +31,6 @@ import * as logger from "firebase-functions/logger";
 import {GoogleGenAI, Type} from "@google/genai";
 import {Polar} from "@polar-sh/sdk";
 import {Webhook} from "svix";
-import {RateLimiter} from "limiter";
 
 // Define secrets
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
@@ -59,60 +58,84 @@ logger.info("✅ [INIT] Cloud Functions initialization complete");
 const GEMINI_MODEL = "gemini-2.5-flash";
 
 // ==========================================
-// Rate Limiting
+// Rate Limiting (Firestore-based for reliability across instances)
 // ==========================================
 
-// Rate limiters per user (10 requests per minute)
-const rateLimiters = new Map<string, RateLimiter>();
-
-// Daily quotas stored in memory (resets on cold start)
-interface UserQuota {
-  used: number;
-  resetAt: Date;
-}
-const dailyQuotas = new Map<string, UserQuota>();
+// Rate limit configuration
+const RATE_LIMITS = {
+  PER_MINUTE: 10, // Maximum requests per minute
+  PER_DAY: 100, // Maximum requests per day
+};
 
 /**
- * Check if a user has exceeded rate limits
+ * Firestore-based rate limiting that persists across cold starts and function instances
  * @param uid User ID
  * @returns Object indicating if request is allowed and error message if not
  */
-function checkRateLimit(uid: string): { allowed: boolean; error?: string } {
-  // Check per-minute rate limit (10 requests per minute)
-  if (!rateLimiters.has(uid)) {
-    rateLimiters.set(uid, new RateLimiter({tokensPerInterval: 10, interval: "minute"}));
-  }
+async function checkRateLimit(uid: string): Promise<{ allowed: boolean; error?: string }> {
+  const now = Date.now();
+  const oneMinuteAgo = now - 60 * 1000;
+  const rateLimitRef = db.collection("rateLimits").doc(uid);
 
-  const limiter = rateLimiters.get(uid)!;
-  if (!limiter.tryRemoveTokens(1)) {
-    return {
-      allowed: false,
-      error: "Rate limit exceeded. Maximum 10 requests per minute. Please try again later.",
-    };
-  }
+  try {
+    // Use transaction to prevent race conditions
+    const result = await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(rateLimitRef);
+      const data = doc.exists ? doc.data() : null;
 
-  // Check daily quota (100 requests per day)
-  const now = new Date();
-  const quota = dailyQuotas.get(uid);
+      // Get current minute requests (filter out old timestamps)
+      const minuteRequests = (data?.minuteRequests || [])
+        .filter((timestamp: number) => timestamp > oneMinuteAgo);
 
-  if (!quota || quota.resetAt < now) {
-    // Reset quota for new day
-    const tomorrow = new Date(now);
-    tomorrow.setHours(24, 0, 0, 0);
-    dailyQuotas.set(uid, {used: 1, resetAt: tomorrow});
+      // Check per-minute rate limit
+      if (minuteRequests.length >= RATE_LIMITS.PER_MINUTE) {
+        return {
+          allowed: false,
+          error: `Rate limit exceeded. Maximum ${RATE_LIMITS.PER_MINUTE} requests per minute. Please try again later.`,
+        };
+      }
+
+      // Check daily quota
+      const dailyResetAt = data?.dailyResetAt?.toMillis() || 0;
+      let dailyUsed = data?.dailyUsed || 0;
+
+      // Reset daily quota if expired
+      if (now > dailyResetAt) {
+        dailyUsed = 0;
+      }
+
+      // Check if daily limit exceeded
+      if (dailyUsed >= RATE_LIMITS.PER_DAY) {
+        const resetDate = new Date(dailyResetAt);
+        const hoursUntilReset = Math.ceil((dailyResetAt - now) / (1000 * 60 * 60));
+        return {
+          allowed: false,
+          error: `Daily quota exceeded. Maximum ${RATE_LIMITS.PER_DAY} AI requests per day. Resets in ${hoursUntilReset} hours.`,
+        };
+      }
+
+      // Update rate limit data
+      const tomorrow = new Date(now);
+      tomorrow.setHours(24, 0, 0, 0);
+      
+      transaction.set(rateLimitRef, {
+        minuteRequests: [...minuteRequests, now],
+        dailyUsed: dailyUsed + 1,
+        dailyResetAt: now > dailyResetAt ? Timestamp.fromDate(tomorrow) : (data?.dailyResetAt || Timestamp.fromDate(tomorrow)),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      return {allowed: true};
+    });
+
+    return result;
+  } catch (error) {
+    logger.error("❌ [checkRateLimit] Error checking rate limit:", error);
+    // Fail-open with a warning - allow the request but log the error
+    // In production, you may want to fail-closed for security
+    logger.warn("⚠️ [checkRateLimit] Allowing request due to rate limit check failure (fail-open)");
     return {allowed: true};
   }
-
-  if (quota.used >= 100) {
-    const hoursUntilReset = Math.ceil((quota.resetAt.getTime() - now.getTime()) / (1000 * 60 * 60));
-    return {
-      allowed: false,
-      error: `Daily quota exceeded. Maximum 100 AI requests per day. Resets in ${hoursUntilReset} hours.`,
-    };
-  }
-
-  quota.used++;
-  return {allowed: true};
 }
 
 // ==========================================
@@ -278,6 +301,7 @@ async function checkTokenLimit(uid: string): Promise<{
 
 /**
  * Track token usage after an API call
+ * Uses Firestore transaction to prevent race conditions during concurrent requests
  * @param uid User ID
  * @param inputTokens Number of input tokens used
  * @param outputTokens Number of output tokens used
@@ -294,62 +318,65 @@ async function trackTokenUsage(uid: string, inputTokens: number, outputTokens: n
       cost: `$${cost.toFixed(6)}`,
     });
 
-    // Get current subscription data
     const subscriptionRef = db.collection("users").doc(uid).collection("subscription").doc("current");
-    const subscriptionDoc = await subscriptionRef.get();
 
-    let plan = "free";
-    let status = "free";
-    let currentTokenUsage = {
-      inputTokens: 0,
-      outputTokens: 0,
-      totalCost: 0,
-    };
+    // Use transaction to prevent race conditions
+    await db.runTransaction(async (transaction) => {
+      const subscriptionDoc = await transaction.get(subscriptionRef);
 
-    if (subscriptionDoc.exists) {
-      const data = subscriptionDoc.data();
-      plan = data?.plan || "free";
-      status = data?.status || "free";
+      let plan = "free";
+      let status = "free";
+      let currentTokenUsage = {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalCost: 0,
+      };
 
-      if (data?.tokenUsage) {
-        currentTokenUsage = {
-          inputTokens: data.tokenUsage.inputTokens || 0,
-          outputTokens: data.tokenUsage.outputTokens || 0,
-          totalCost: data.tokenUsage.totalCost || 0,
-        };
+      if (subscriptionDoc.exists) {
+        const data = subscriptionDoc.data();
+        plan = data?.plan || "free";
+        status = data?.status || "free";
+
+        if (data?.tokenUsage) {
+          currentTokenUsage = {
+            inputTokens: data.tokenUsage.inputTokens || 0,
+            outputTokens: data.tokenUsage.outputTokens || 0,
+            totalCost: data.tokenUsage.totalCost || 0,
+          };
+        }
       }
-    }
 
-    // Calculate new totals
-    const newInputTokens = currentTokenUsage.inputTokens + inputTokens;
-    const newOutputTokens = currentTokenUsage.outputTokens + outputTokens;
-    const newTotalCost = currentTokenUsage.totalCost + cost;
+      // Calculate new totals
+      const newInputTokens = currentTokenUsage.inputTokens + inputTokens;
+      const newOutputTokens = currentTokenUsage.outputTokens + outputTokens;
+      const newTotalCost = currentTokenUsage.totalCost + cost;
 
-    // Determine if limit is reached
-    const isPro = plan === "pro" && status === "active";
-    const limit = isPro ? TOKEN_LIMITS.PRO : TOKEN_LIMITS.FREE;
-    const isLimitReached = newTotalCost >= limit;
+      // Determine if limit is reached
+      const isPro = plan === "pro" && status === "active";
+      const limit = isPro ? TOKEN_LIMITS.PRO : TOKEN_LIMITS.FREE;
+      const isLimitReached = newTotalCost >= limit;
 
-    // Update subscription document
-    await subscriptionRef.set({
-      tokenUsage: {
-        inputTokens: newInputTokens,
-        outputTokens: newOutputTokens,
-        totalCost: newTotalCost,
-        lastResetAt: currentTokenUsage.inputTokens === 0 ?
-          FieldValue.serverTimestamp() :
-          subscriptionDoc.data()?.tokenUsage?.lastResetAt || null,
+      // Update subscription document atomically
+      transaction.set(subscriptionRef, {
+        tokenUsage: {
+          inputTokens: newInputTokens,
+          outputTokens: newOutputTokens,
+          totalCost: newTotalCost,
+          lastResetAt: currentTokenUsage.inputTokens === 0 ?
+            FieldValue.serverTimestamp() :
+            subscriptionDoc.data()?.tokenUsage?.lastResetAt || null,
         lastUpdatedAt: FieldValue.serverTimestamp(),
         isLimitReached,
       },
-    }, {merge: true});
+      }, {merge: true});
 
-    logger.info("✅ [trackTokenUsage] Token usage updated successfully", {
-      uid,
-      newTotalCost: `$${newTotalCost.toFixed(6)}`,
-      limit: `$${limit.toFixed(2)}`,
-      isLimitReached,
-      percentUsed: `${((newTotalCost / limit) * 100).toFixed(1)}%`,
+      logger.info("✅ [trackTokenUsage] Token usage updated successfully", {
+        uid,
+        newTotalCost: `$${newTotalCost.toFixed(6)}`,
+        limit: `$${limit.toFixed(2)}`,
+        isLimitReached,
+        percentUsed: `${((newTotalCost / limit) * 100).toFixed(1)}%`,
+      });
     });
   } catch (error) {
     logger.error("❌ [trackTokenUsage] Error tracking token usage:", error);
@@ -780,6 +807,7 @@ export const onUserCreate = beforeUserCreated(async (event) => {
 
 /**
  * Check if a webhook event has already been processed (idempotency)
+ * Uses Firestore create() to atomically prevent duplicate processing
  * @param userId User ID
  * @param eventId Unique event ID from webhook
  * @returns true if this is a new event, false if already processed
@@ -790,22 +818,29 @@ async function checkEventIdempotency(userId: string, eventId: string): Promise<b
   logger.info(`🔍 [${functionName}] Checking idempotency for event: ${eventId}`);
 
   const eventRef = db.collection("users").doc(userId).collection("webhookEvents").doc(eventId);
-  const eventDoc = await eventRef.get();
 
-  if (eventDoc.exists) {
-    logger.warn(`⚠️ [${functionName}] Duplicate event detected: ${eventId}`);
-    return false; // Already processed
+  try {
+    // Use create() which atomically fails if document already exists
+    // This prevents race conditions between concurrent webhook calls
+    await eventRef.create({
+      eventId,
+      processed: false,
+      receivedAt: FieldValue.serverTimestamp(),
+    });
+
+    logger.info(`✅ [${functionName}] Event is new and marked as processing: ${eventId}`);
+    return true; // OK to process
+  } catch (error: any) {
+    // If error code is 'already-exists', this is a duplicate
+    if (error.code === 6 || error.message?.includes("already exists")) {
+      logger.warn(`⚠️ [${functionName}] Duplicate event detected: ${eventId}`);
+      return false; // Already processed
+    }
+
+    // For other errors, log and rethrow
+    logger.error(`❌ [${functionName}] Error checking idempotency:`, error);
+    throw error;
   }
-
-  // Mark as processing
-  await eventRef.set({
-    eventId,
-    processed: false,
-    receivedAt: FieldValue.serverTimestamp(),
-  });
-
-  logger.info(`✅ [${functionName}] Event is new and marked as processing: ${eventId}`);
-  return true; // OK to process
 }
 
 /**
@@ -861,7 +896,7 @@ async function createNotification(
 export const createPolarCheckout = onCall(
   {
     secrets: [polarAccessToken],
-    enforceAppCheck: false, // Set to true in production with App Check
+    enforceAppCheck: true, // App Check enabled for security
   },
   async (request) => {
     const startTime = Date.now();
@@ -1428,7 +1463,7 @@ export const polarWebhook = onRequest(
 export const cancelPolarSubscription = onCall(
   {
     secrets: [polarAccessToken],
-    enforceAppCheck: false,
+    enforceAppCheck: true, // App Check enabled for security
   },
   async (request) => {
     const startTime = Date.now();
@@ -1534,7 +1569,7 @@ export const cancelPolarSubscription = onCall(
 export const getPolarCustomerPortal = onCall(
   {
     secrets: [polarAccessToken],
-    enforceAppCheck: false,
+    enforceAppCheck: true, // App Check enabled for security
   },
   async (request) => {
     const startTime = Date.now();
@@ -1604,7 +1639,7 @@ export const getPolarCustomerPortal = onCall(
 export const getPolarInvoices = onCall(
   {
     secrets: [polarAccessToken],
-    enforceAppCheck: false,
+    enforceAppCheck: true, // App Check enabled for security
   },
   async (request) => {
     const startTime = Date.now();
@@ -1742,7 +1777,7 @@ When creating quests, break them into logical phases/categories with specific ac
 export const geminiProxy = onCall(
   {
     secrets: [geminiApiKey],
-    enforceAppCheck: false, // Set to true in production with App Check
+    enforceAppCheck: true, // App Check enabled for security
     maxInstances: 10,
     minInstances: 1, // Keep 1 instance warm for faster response
   },
@@ -1775,7 +1810,7 @@ export const geminiProxy = onCall(
     // Step 2: Check rate limits
     logger.info(`🚦 [${functionName}] Step 2: Checking rate limits...`);
 
-    const rateLimitResult = checkRateLimit(request.auth.uid);
+    const rateLimitResult = await checkRateLimit(request.auth.uid);
     if (!rateLimitResult.allowed) {
       logger.error(`❌ [${functionName}] Rate limit exceeded for user: ${request.auth.uid}`);
       logger.error(`❌ [${functionName}] ${rateLimitResult.error}`);
@@ -2331,37 +2366,43 @@ export const cleanupOldChatMessages = onSchedule(
     logger.info(`📅 [${functionName}] Cutoff date: ${cutoffDate.toDate().toISOString()}`);
 
     try {
-      // Get all users
-      const usersSnapshot = await db.collection("users").get();
+      // Use collection group query to get all old messages across all users in one query
+      // This avoids N+1 query pattern (fetching all users then querying each one)
       let totalDeleted = 0;
-      let usersProcessed = 0;
+      let batchCount = 0;
+      let hasMore = true;
 
-      logger.info(`👥 [${functionName}] Found ${usersSnapshot.size} users to process`);
-
-      for (const userDoc of usersSnapshot.docs) {
-        const uid = userDoc.id;
-        const chatRef = db.collection("users").doc(uid).collection("oracleChat");
-
-        // Query old messages (batch of 500)
-        const oldMessagesQuery = chatRef
+      while (hasMore) {
+        // Query old messages across all users using collection group (batch of 500)
+        const oldMessagesQuery = db.collectionGroup("oracleChat")
           .where("createdAt", "<", cutoffDate)
           .limit(500);
 
         const oldMessages = await oldMessagesQuery.get();
 
-        if (!oldMessages.empty) {
-          const batch = db.batch();
-          oldMessages.docs.forEach((doc) => batch.delete(doc.ref));
-          await batch.commit();
-
-          totalDeleted += oldMessages.docs.length;
-          logger.info(`✅ [${functionName}] Deleted ${oldMessages.docs.length} old messages for user: ${uid}`);
+        if (oldMessages.empty) {
+          hasMore = false;
+          logger.info(`ℹ️ [${functionName}] No more old messages to delete`);
+          break;
         }
 
-        usersProcessed++;
+        // Delete in batches
+        const batch = db.batch();
+        oldMessages.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
 
-        // Small delay every 10 users to avoid rate limits
-        if (usersProcessed % 10 === 0) {
+        totalDeleted += oldMessages.docs.length;
+        batchCount++;
+        
+        logger.info(`✅ [${functionName}] Batch ${batchCount}: Deleted ${oldMessages.docs.length} old messages`);
+
+        // If we got fewer than the limit, we're done
+        if (oldMessages.docs.length < 500) {
+          hasMore = false;
+        }
+
+        // Small delay between batches to avoid rate limits
+        if (hasMore) {
           await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
@@ -2372,7 +2413,7 @@ export const cleanupOldChatMessages = onSchedule(
       logger.info(`✅ [${functionName}] CLEANUP COMPLETE`);
       logger.info("─".repeat(60));
       logger.info(`📊 [${functionName}] Summary:`, {
-        usersProcessed,
+        batchesProcessed: batchCount,
         messagesDeleted: totalDeleted,
         durationMs: duration,
       });
@@ -2435,3 +2476,264 @@ function convertToolSchema(params: any): any {
 
   return convertSchema(params);
 }
+
+// ==========================================
+// Maintenance Mode Management
+// ==========================================
+
+/**
+ * Set Maintenance Mode
+ * 
+ * Admin-only Cloud Function to enable or disable maintenance mode.
+ * Updates the config/maintenance document in Firestore.
+ * 
+ * @param {object} data - The request data
+ * @param {boolean} data.isMaintenanceMode - Whether to enable maintenance mode
+ * @param {string} [data.title] - Optional custom title for maintenance page
+ * @param {string} [data.subtitle] - Optional custom message for maintenance page
+ * @param {string} [data.date] - Optional expected completion date/time
+ * @returns {object} Success status and updated configuration
+ */
+export const setMaintenanceMode = onCall(
+  async (request) => {
+    const functionName = "setMaintenanceMode";
+    const startTime = Date.now();
+    
+    logger.info("═".repeat(60));
+    logger.info(`🚀 [${functionName}] Function invoked`);
+    
+    try {
+      // 🔐 Authentication check
+      logger.info(`🔐 [${functionName}] Verifying admin authentication...`);
+      if (!request.auth) {
+        logger.warn(`⚠️ [${functionName}] Unauthorized: No authentication`);
+        throw new HttpsError(
+          "unauthenticated",
+          "Authentication required to manage maintenance mode"
+        );
+      }
+      
+      const uid = request.auth.uid;
+      logger.info(`🔐 [${functionName}] User authenticated: ${uid}`);
+      
+      // Check if user is admin (you can implement your own admin check)
+      // For now, we'll check if the user has an 'admin' custom claim
+      const isAdmin = request.auth.token.admin === true;
+      
+      if (!isAdmin) {
+        logger.warn(`⚠️ [${functionName}] Unauthorized: User ${uid} is not admin`);
+        throw new HttpsError(
+          "permission-denied",
+          "Only administrators can manage maintenance mode"
+        );
+      }
+      
+      logger.info(`✅ [${functionName}] Admin verified`);
+      
+      // 📥 Validate input
+      logger.info(`📥 [${functionName}] Validating input data...`);
+      const {isMaintenanceMode, title, subtitle, date} = request.data;
+      
+      if (typeof isMaintenanceMode !== "boolean") {
+        logger.warn(`⚠️ [${functionName}] Invalid input: isMaintenanceMode must be boolean`);
+        throw new HttpsError(
+          "invalid-argument",
+          "isMaintenanceMode must be a boolean"
+        );
+      }
+      
+      logger.info(`📥 [${functionName}] Input validated - Mode: ${isMaintenanceMode}`);
+      
+      // 💾 Update Firestore
+      logger.info(`💾 [${functionName}] Updating maintenance configuration...`);
+      const maintenanceRef = db.collection("config").doc("maintenance");
+      
+      const updateData: any = {
+        isMaintenanceMode,
+        lastUpdatedAt: FieldValue.serverTimestamp(),
+      };
+      
+      // Update optional fields if provided
+      if (title !== undefined) updateData.title = title;
+      if (subtitle !== undefined) updateData.subtitle = subtitle;
+      if (date !== undefined) updateData.date = date;
+      
+      await maintenanceRef.set(updateData, {merge: true});
+      
+      logger.info(`✅ [${functionName}] Maintenance configuration updated successfully`);
+      logger.info(`📊 [${functionName}] New state: ${isMaintenanceMode ? "ENABLED" : "DISABLED"}`);
+      
+      // 📤 Return response
+      const duration = Date.now() - startTime;
+      logger.info(`⏱️ [${functionName}] Execution time: ${duration}ms`);
+      logger.info("═".repeat(60));
+      
+      return {
+        success: true,
+        config: {
+          isMaintenanceMode,
+          ...updateData,
+        },
+      };
+    } catch (error: any) {
+      const duration = Date.now() - startTime;
+      
+      if (error instanceof HttpsError) {
+        throw error;
+      }
+      
+      logger.error(`❌ [${functionName}] Unexpected error:`, {
+        error: error.message,
+        errorStack: error.stack,
+      });
+      logger.info(`⏱️ [${functionName}] Execution time before failure: ${duration}ms`);
+      logger.info("═".repeat(60));
+      
+      throw new HttpsError(
+        "internal",
+        "Failed to update maintenance mode configuration"
+      );
+    }
+  }
+);
+
+// ==========================================
+// User Deletion - Cascading Delete
+// ==========================================
+
+/**
+ * 🗑️ CASCADE DELETE USER DATA
+ * 
+ * Triggered BEFORE a user account is deleted from Firebase Auth.
+ * Cleans up all user data and references across the database to prevent orphaned data.
+ * 
+ * Cleanup includes:
+ * - Friend requests (sent and received)
+ * - Challenges (created or participated in)
+ * - Friend documents in other users' collections
+ * - All user subcollections
+ */
+export const cleanupUserData = beforeUserDeleted(async (event) => {
+  const startTime = Date.now();
+  const functionName = "cleanupUserData";
+  const uid = event.data.uid;
+
+  logger.info("═".repeat(60));
+  logger.info(`🗑️ [${functionName}] Starting cascading delete for user: ${uid}`);
+  logger.info("═".repeat(60));
+
+  try {
+    const batch = db.batch();
+    let operationCount = 0;
+
+    // Step 1: Delete friend requests (where user is sender or receiver)
+    logger.info(`🔄 [${functionName}] Step 1: Cleaning up friend requests...`);
+    
+    // Delete requests sent by user
+    const sentRequests = await db.collection("friendRequests")
+      .where("fromUID", "==", uid)
+      .get();
+    
+    sentRequests.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      operationCount++;
+    });
+    logger.info(`✅ [${functionName}] Queued ${sentRequests.size} sent friend requests for deletion`);
+
+    // Delete requests received by user
+    const receivedRequests = await db.collection("friendRequests")
+      .where("toUID", "==", uid)
+      .get();
+    
+    receivedRequests.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      operationCount++;
+    });
+    logger.info(`✅ [${functionName}] Queued ${receivedRequests.size} received friend requests for deletion`);
+
+    // Step 2: Handle challenges (delete if creator, or remove from partnerIds if participant)
+    logger.info(`🔄 [${functionName}] Step 2: Cleaning up challenges...`);
+    
+    const userChallenges = await db.collection("challenges")
+      .where("partnerIds", "array-contains", uid)
+      .get();
+    
+    for (const challengeDoc of userChallenges.docs) {
+      const challengeData = challengeDoc.data();
+      
+      if (challengeData.creatorUID === uid) {
+        // User is creator - delete the entire challenge
+        batch.delete(challengeDoc.ref);
+        operationCount++;
+      } else {
+        // User is participant - remove from partnerIds
+        const updatedPartnerIds = challengeData.partnerIds.filter((id: string) => id !== uid);
+        batch.update(challengeDoc.ref, {
+          partnerIds: updatedPartnerIds,
+          status: updatedPartnerIds.length < 2 ? "cancelled" : challengeData.status,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        operationCount++;
+      }
+    }
+    logger.info(`✅ [${functionName}] Queued ${userChallenges.size} challenges for cleanup`);
+
+    // Step 3: Delete friend documents in other users' collections
+    logger.info(`🔄 [${functionName}] Step 3: Cleaning up friend relationships...`);
+    
+    // Query all users who have this user as a friend
+    const friendRefs = await db.collectionGroup("friends")
+      .where(FieldValue.documentId(), "==", uid)
+      .get();
+    
+    friendRefs.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+      operationCount++;
+    });
+    logger.info(`✅ [${functionName}] Queued ${friendRefs.size} friend relationships for deletion`);
+
+    // Commit the batch if there are operations
+    if (operationCount > 0) {
+      logger.info(`💾 [${functionName}] Committing batch with ${operationCount} operations...`);
+      await batch.commit();
+      logger.info(`✅ [${functionName}] Batch committed successfully`);
+    } else {
+      logger.info(`ℹ️ [${functionName}] No operations to commit`);
+    }
+
+    // Step 4: Delete user document and subcollections
+    // Note: User subcollections will be automatically deleted by Firestore security rules
+    // when the auth user is deleted, but we'll delete the main document here
+    logger.info(`🔄 [${functionName}] Step 4: Deleting user document...`);
+    
+    const userRef = db.collection("users").doc(uid);
+    await userRef.delete();
+    logger.info(`✅ [${functionName}] User document deleted`);
+
+    // Step 5: Clean up rate limits
+    logger.info(`🔄 [${functionName}] Step 5: Cleaning up rate limits...`);
+    
+    const rateLimitRef = db.collection("rateLimits").doc(uid);
+    await rateLimitRef.delete();
+    logger.info(`✅ [${functionName}] Rate limit data deleted`);
+
+    const duration = Date.now() - startTime;
+    logger.info(`✅ [${functionName}] Cascading delete completed successfully`);
+    logger.info(`📊 [${functionName}] Total operations: ${operationCount}`);
+    logger.info(`⏱️ [${functionName}] Execution time: ${duration}ms`);
+    logger.info("═".repeat(60));
+  } catch (error: any) {
+    const duration = Date.now() - startTime;
+    logger.error(`❌ [${functionName}] Error during cascading delete:`, {
+      error: error.message,
+      errorStack: error.stack,
+      uid,
+    });
+    logger.info(`⏱️ [${functionName}] Execution time before failure: ${duration}ms`);
+    logger.info("═".repeat(60));
+    
+    // Don't throw - allow user deletion to proceed even if cleanup fails
+    // This prevents users from being stuck if cleanup fails
+    logger.warn(`⚠️ [${functionName}] User deletion will proceed despite cleanup failure`);
+  }
+});

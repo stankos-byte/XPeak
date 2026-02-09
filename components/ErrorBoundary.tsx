@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { DEBUG_FLAGS } from '../config/debugFlags';
+import { captureException } from '../config/sentry';
 
 interface Props {
   children: ReactNode;
@@ -10,6 +11,7 @@ interface Props {
 interface State {
   hasError: boolean;
   error?: Error;
+  errorInfo?: ErrorInfo;
 }
 
 class ErrorBoundary extends Component<Props, State> {
@@ -22,30 +24,18 @@ class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     if (DEBUG_FLAGS.errors) console.error('Uncaught error:', error, errorInfo);
     
-    // Send error reports to logging service
-    // IMPLEMENTATION NOTE: Integrate an error reporting service for production
-    // Recommended options:
-    // 1. Sentry: https://sentry.io
-    //    - Install: npm install @sentry/react
-    //    - Setup: Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN })
-    //    - Usage: Sentry.captureException(error, { extra: errorInfo })
-    // 
-    // 2. LogRocket: https://logrocket.com
-    //    - Install: npm install logrocket
-    //    - Setup: LogRocket.init('app-id')
-    //    - Usage: LogRocket.captureException(error, { extra: errorInfo })
-    //
-    // 3. Custom Firebase logging:
-    //    - Use Firebase Functions to log errors to Firestore or external service
-    //    - Example: functions.httpsCallable('logError')({ error: error.message, stack: error.stack, ...errorInfo })
+    // Store error info for display
+    this.setState({ errorInfo });
     
-    // Uncomment when error reporting is configured:
-    // if (import.meta.env.PROD) {
-    //   errorReportingService.captureException(error, {
-    //     extra: errorInfo,
-    //     tags: { component: 'ErrorBoundary' }
-    //   });
-    // }
+    // Report to Sentry (automatically handles prod check)
+    captureException(error, {
+      errorInfo,
+      componentStack: errorInfo.componentStack,
+      tags: { 
+        component: 'ErrorBoundary',
+        errorBoundary: true,
+      },
+    });
   }
 
   public render() {

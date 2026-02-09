@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './config/queryClient';
+import { initSentry } from './config/sentry';
 import LandingView from './pages/landing/Landing';
 import AppLayout from './AppLayout';
 import Signup from './pages/auth/Signup';
@@ -12,6 +13,12 @@ import { AuthProvider } from './contexts/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProtectedRoute from './components/ProtectedRoute';
 import { GameToaster } from './components/ui/GameToast';
+import MaintenancePage from './pages/Maintenance';
+import { subscribeToMaintenanceMode } from './services/maintenanceService';
+import { MaintenanceConfig } from './types';
+
+// Initialize Sentry error monitoring (must be done before React renders)
+initSentry();
 
 // Info Pages
 import Features from './pages/info/Features';
@@ -49,6 +56,45 @@ const ThemedAppLayout: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const [maintenanceConfig, setMaintenanceConfig] = useState<MaintenanceConfig | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Subscribe to maintenance mode changes
+    const unsubscribe = subscribeToMaintenanceMode((config) => {
+      setMaintenanceConfig(config);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Show loading state while checking maintenance mode
+  if (isLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      }}>
+        <div style={{
+          color: 'white',
+          fontSize: '18px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        }}>
+          Loading...
+        </div>
+      </div>
+    );
+  }
+
+  // Show maintenance page if maintenance mode is active
+  if (maintenanceConfig?.isMaintenanceMode) {
+    return <MaintenancePage config={maintenanceConfig} />;
+  }
+
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
