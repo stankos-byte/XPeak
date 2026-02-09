@@ -28,6 +28,8 @@ import {defineSecret} from "firebase-functions/params";
 import {getFirestore, FieldValue, Timestamp} from "firebase-admin/firestore";
 import {initializeApp} from "firebase-admin/app";
 import * as logger from "firebase-functions/logger";
+// import {FieldPath} from "firebase-admin/firestore"; // Used by cleanupUserData (disabled)
+// import {auth} from "firebase-functions/v1"; // Used by cleanupUserData (disabled)
 import {GoogleGenAI, Type} from "@google/genai";
 import {Polar} from "@polar-sh/sdk";
 import {Webhook} from "svix";
@@ -106,7 +108,6 @@ async function checkRateLimit(uid: string): Promise<{ allowed: boolean; error?: 
 
       // Check if daily limit exceeded
       if (dailyUsed >= RATE_LIMITS.PER_DAY) {
-        const resetDate = new Date(dailyResetAt);
         const hoursUntilReset = Math.ceil((dailyResetAt - now) / (1000 * 60 * 60));
         return {
           allowed: false,
@@ -2613,10 +2614,13 @@ export const setMaintenanceMode = onCall(
  * - Friend documents in other users' collections
  * - All user subcollections
  */
-export const cleanupUserData = beforeUserDeleted(async (event) => {
+// TEMPORARILY DISABLED: Eventarc API setup issue
+// TODO: Re-enable after manually enabling Eventarc API in Google Cloud Console
+/*
+export const cleanupUserData = auth.user().onDelete(async (user) => {
   const startTime = Date.now();
   const functionName = "cleanupUserData";
-  const uid = event.data.uid;
+  const uid = user.uid;
 
   logger.info("═".repeat(60));
   logger.info(`🗑️ [${functionName}] Starting cascading delete for user: ${uid}`);
@@ -2683,7 +2687,7 @@ export const cleanupUserData = beforeUserDeleted(async (event) => {
     
     // Query all users who have this user as a friend
     const friendRefs = await db.collectionGroup("friends")
-      .where(FieldValue.documentId(), "==", uid)
+      .where(FieldPath.documentId(), "==", uid)
       .get();
     
     friendRefs.docs.forEach((doc) => {
@@ -2737,3 +2741,4 @@ export const cleanupUserData = beforeUserDeleted(async (event) => {
     logger.warn(`⚠️ [${functionName}] User deletion will proceed despite cleanup failure`);
   }
 });
+*/
