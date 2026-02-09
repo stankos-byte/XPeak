@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, Friend, FriendChallenge, ChallengeQuestCategory, ChallengeQuestTask, SkillCategory, SkillProgress } from '../../types';
-import { Zap, Users, Plus, Bell, ChevronDown, ChevronUp, Pencil, Trash2, Check, X } from 'lucide-react';
+import { Users, Plus, Bell, ChevronDown, ChevronUp, Pencil, Trash2, Check, X } from 'lucide-react';
 import { calculateChallengeXP } from '../../utils/gamification';
 import { SKILL_COLORS } from '../../constants';
 import { DEBUG_FLAGS } from '../../config/debugFlags';
@@ -13,6 +13,7 @@ interface FriendsViewProps {
   onEditChallenge: (challenge: FriendChallenge) => void;
   onDeleteChallenge: (id: string) => void;
   onToggleChallengeTask: (challengeId: string, categoryId: string, taskId: string) => void;
+  onRemoveFriend: (friendId: string) => void;
 }
 
 // Helper to check if a task is completed by a specific user
@@ -25,8 +26,8 @@ const getOpponentIds = (challenge: FriendChallenge, currentUserId: string): stri
   return challenge.partnerIds.filter(id => id !== currentUserId);
 };
 
-const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask }) => {
-  const CURRENT_USER_ID = user.uid;
+const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, onCreateChallenge, onEditChallenge, onDeleteChallenge, onToggleChallengeTask, onRemoveFriend }) => {
+  const CURRENT_USER_ID = user.uid || 'currentUser';
   const [expandedChallenges, setExpandedChallenges] = useState<Record<string, boolean>>({});
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [selectedFriend, setSelectedFriend] = useState<Friend | null>(null);
@@ -378,6 +379,7 @@ const FriendsView: React.FC<FriendsViewProps> = ({ user, friends, challenges, on
           friend={selectedFriend}
           isOpen={!!selectedFriend}
           onClose={() => setSelectedFriend(null)}
+          onRemoveFriend={onRemoveFriend}
         />
       )}
 
@@ -401,9 +403,10 @@ interface FriendProfileModalProps {
   friend: Friend;
   isOpen: boolean;
   onClose: () => void;
+  onRemoveFriend: (friendId: string) => void;
 }
 
-const FriendProfileModal: React.FC<FriendProfileModalProps> = ({ friend, isOpen, onClose }) => {
+const FriendProfileModal: React.FC<FriendProfileModalProps> = ({ friend, isOpen, onClose, onRemoveFriend }) => {
   if (!isOpen) return null;
 
   // For now, we'll create placeholder skills since Friend doesn't have skills
@@ -479,6 +482,20 @@ const FriendProfileModal: React.FC<FriendProfileModalProps> = ({ friend, isOpen,
               ))}
             </div>
           </div>
+
+          {/* Remove Friend Button */}
+          <button
+            onClick={() => {
+              if (window.confirm(`Remove ${friend.nickname} from your network?`)) {
+                onRemoveFriend(friend.id);
+                onClose();
+              }
+            }}
+            className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-black uppercase tracking-widest py-4 px-4 rounded-xl transition-all flex items-center justify-center gap-2"
+          >
+            <Trash2 size={18} strokeWidth={3} />
+            Remove Friend
+          </button>
         </div>
       </div>
     </div>

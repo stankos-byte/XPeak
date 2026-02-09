@@ -175,6 +175,7 @@ export const useUserManager = (): UseUserManagerReturn => {
           }
 
           const userProfile: UserProfile = {
+            uid: authUser.uid,
             name: firestoreUser.name,
             nickname: nickname,
             totalXP: firestoreUser.totalXP,

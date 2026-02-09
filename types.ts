@@ -103,6 +103,7 @@ export interface DailyActivity {
 }
 
 export interface UserProfile {
+  uid?: string; // Firebase Auth user ID (optional for backward compatibility)
   name: string;
   nickname: string;
   totalXP: number;

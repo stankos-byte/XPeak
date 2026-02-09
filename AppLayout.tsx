@@ -131,6 +131,10 @@ const App: React.FC = () => {
     challengeManager.setChallengeToDelete(id);
   };
 
+  const handleRemoveFriend = (friendId: string) => {
+    challengeManager.handleRemoveFriend(friendId);
+  };
+
   // Modal submit handlers
   const handleTaskModalSubmit = (d: any) => {
     if (questManager.questTaskConfig.isOpen) {
@@ -284,7 +288,8 @@ const App: React.FC = () => {
             onCreateChallenge={() => challengeManager.setIsChallengeModalOpen(true)} 
             onEditChallenge={handleEditChallenge} 
             onDeleteChallenge={handleDeleteChallenge} 
-            onToggleChallengeTask={handleToggleChallengeTask} 
+            onToggleChallengeTask={handleToggleChallengeTask}
+            onRemoveFriend={handleRemoveFriend}
           />
         )}
         {activeTab === 'assistant' && (

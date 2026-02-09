@@ -27,7 +27,7 @@ const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
 
     const subject = encodeURIComponent(`XPeak: ${typeLabels[feedbackType]}`);
     const body = encodeURIComponent(message);
-    window.location.href = `mailto:developer@example.com?subject=${subject}&body=${body}`;
+    window.location.href = `mailto:info@xpeak.app?subject=${subject}&body=${body}`;
     
     // Close modal after triggering email client
     onClose();

@@ -19,6 +19,7 @@ interface UseChallengeManagerReturn {
   handleEditChallenge: (challenge: FriendChallenge) => void;
   handleDeleteChallenge: (id: string) => void;
   handleAiCreateChallenge: (challenge: Partial<FriendChallenge>) => void;
+  handleRemoveFriend: (friendId: string) => void;
 }
 
 export const useChallengeManager = (
@@ -283,6 +284,23 @@ export const useChallengeManager = (
     });
   }, []);
 
+  const handleRemoveFriend = useCallback((friendId: string) => {
+    // IMPLEMENTATION NOTE: For full backend integration:
+    // 1. Call Firebase Function or API endpoint to remove friend
+    //    Example: await functions.httpsCallable('removeFriend')({ friendId });
+    // 2. Remove from Firestore: await deleteDoc(doc(db, 'users', currentUserId, 'friends', friendId));
+    // 3. Also remove the reverse relationship if bidirectional
+    // 4. Optionally remove any shared challenges with this friend
+    
+    setFriends((prev: Friend[]) => {
+      const updated = prev.filter((f: Friend) => f.id !== friendId);
+      socialService.updateOperatives(updated);
+      return updated;
+    });
+    
+    if (DEBUG_FLAGS.social) console.log('Friend removed:', friendId);
+  }, []);
+
   return {
     challenges,
     setChallenges: (value: React.SetStateAction<FriendChallenge[]>) => {
@@ -304,5 +322,6 @@ export const useChallengeManager = (
     handleEditChallenge,
     handleDeleteChallenge,
     handleAiCreateChallenge,
+    handleRemoveFriend,
   };
 };
