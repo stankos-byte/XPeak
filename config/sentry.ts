@@ -5,6 +5,13 @@
  * for production deployments.
  */
 
+import { useEffect } from 'react';
+import {
+  useLocation,
+  useNavigationType,
+  createRoutesFromChildren,
+  matchRoutes,
+} from 'react-router-dom';
 import * as Sentry from '@sentry/react';
 
 /**
@@ -40,11 +47,11 @@ export function initSentry(): void {
         
         // React-specific error tracking
         Sentry.reactRouterV7BrowserTracingIntegration({
-          useEffect: Sentry.useEffect,
-          useLocation: Sentry.useLocation,
-          useNavigationType: Sentry.useNavigationType,
-          createRoutesFromChildren: Sentry.createRoutesFromChildren,
-          matchRoutes: Sentry.matchRoutes,
+          useEffect,
+          useLocation,
+          useNavigationType,
+          createRoutesFromChildren,
+          matchRoutes,
         }),
       ],
       
