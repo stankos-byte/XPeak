@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:clean": "node -e \"require('fs').rmSync('dist', {recursive:true, force:true})\" && vite build",
     "preview": "vite preview",
     "prepare": "husky",
-    "check-secrets": "npx secretlint \"**/*\""
+    "check-secrets": "npx secretlint \"**/*\"",
+    "deploy": "npm run build:clean && firebase deploy --only hosting",
+    "deploy:full": "npm run build:clean && firebase deploy"
   },
   "dependencies": {
     "@sentry/react": "^8.47.0",

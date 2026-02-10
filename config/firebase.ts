@@ -1,6 +1,6 @@
 // Firebase SDK Configuration
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, Auth, connectAuthEmulator, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getFunctions, Functions, connectFunctionsEmulator } from 'firebase/functions';
 import { getStorage, FirebaseStorage, connectStorageEmulator } from 'firebase/storage';
@@ -88,6 +88,11 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID as string,
 };
 
+// DEBUG: Log API key suffix to verify correct build
+console.log('🔑 Firebase API Key (last 10 chars):', import.meta.env.VITE_FIREBASE_API_KEY?.slice(-10));
+console.log('🔧 Project ID:', import.meta.env.VITE_FIREBASE_PROJECT_ID);
+console.log('🌐 Auth Domain:', import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+
 // Check if we should use Firebase Emulators
 const useEmulators = import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true';
 
@@ -118,6 +123,14 @@ const auth: Auth = getAuth(app);
 const db: Firestore = getFirestore(app);
 const functions: Functions = getFunctions(app);
 const storage: FirebaseStorage = getStorage(app);
+
+// Set auth persistence to browserLocalPersistence (persists across browser sessions/refreshes)
+// This prevents users from being logged out on page refresh
+if (!useEmulators) {
+  setPersistence(auth, browserLocalPersistence).catch((error) => {
+    console.error('Failed to set auth persistence:', error);
+  });
+}
 
 // Track if emulators have been connected (to prevent duplicate connections)
 let emulatorsConnected = false;

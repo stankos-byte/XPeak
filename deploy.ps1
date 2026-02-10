@@ -26,6 +26,11 @@ Write-Host ""
 
 switch ($choice) {
     "1" {
+        Write-Host "🧹 Cleaning old build..." -ForegroundColor Yellow
+        if (Test-Path "dist") {
+            Remove-Item -Recurse -Force "dist"
+            Write-Host "✅ Old build cleaned" -ForegroundColor Green
+        }
         Write-Host "📦 Building frontend..." -ForegroundColor Cyan
         npm run build
         if ($LASTEXITCODE -eq 0) {
@@ -48,6 +53,11 @@ switch ($choice) {
         }
     }
     "3" {
+        Write-Host "🧹 Cleaning old build..." -ForegroundColor Yellow
+        if (Test-Path "dist") {
+            Remove-Item -Recurse -Force "dist"
+            Write-Host "✅ Old build cleaned" -ForegroundColor Green
+        }
         Write-Host "📦 Building frontend..." -ForegroundColor Cyan
         npm run build
         if ($LASTEXITCODE -eq 0) {

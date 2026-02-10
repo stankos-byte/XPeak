@@ -509,7 +509,7 @@ export async function updateUserProfile(
 /**
  * Get history for a user (limited to recent entries)
  */
-export async function getHistory(uid: string, limitCount = 365): Promise<DailyActivity[]> {
+export async function getHistory(uid: string, limitCount = 30): Promise<DailyActivity[]> {
   if (!db) throw new Error('Firestore not initialized');
   
   const historyRef = fbPaths.historyCollection(uid);

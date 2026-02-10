@@ -116,15 +116,20 @@ export const useTaskManager = (
     setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? updatedTask : t));
 
     // Save to Firestore if authenticated
-    if (user) {
+    if (user?.uid) {
+      console.log('💾 Saving task completion for user:', user.uid);
       updateTask(user.uid, id, {
         completed: true,
         lastCompletedDate: now,
         streak: newStreak
       }).catch((error) => {
-        console.error('Failed to save task completion:', error);
-        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+        console.error('❌ Failed to save task completion:', error);
+        console.error('   User ID:', user?.uid);
+        console.error('   Task ID:', id);
+        console.error('   Error details:', error);
       });
+    } else {
+      console.warn('⚠️ Cannot save task completion - user not authenticated');
     }
 
     onXPChange(amount, id, { [id]: amount }, task.skillCategory);
@@ -212,11 +217,16 @@ export const useTaskManager = (
     setTasks((prev: Task[]) => [newTask, ...prev]);
 
     // Save to Firestore if authenticated
-    if (user) {
+    if (user?.uid) {
+      console.log('💾 Saving new task for user:', user.uid);
       saveTask(user.uid, newTask).catch((error) => {
-        console.error('Failed to save new task to Firestore:', error);
-        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+        console.error('❌ Failed to save new task to Firestore:', error);
+        console.error('   User ID:', user?.uid);
+        console.error('   Task:', newTask);
+        console.error('   Error details:', error);
       });
+    } else {
+      console.warn('⚠️ Cannot save task - user not authenticated');
     }
   }, [user]);
 
@@ -224,10 +234,10 @@ export const useTaskManager = (
     setTasks((prev: Task[]) => prev.map((t: Task) => t.id === id ? { ...t, ...data } : t));
     
     // Save to Firestore if authenticated
-    if (user) {
+    if (user?.uid) {
       updateTask(user.uid, id, data).catch((error) => {
-        console.error('Failed to update task in Firestore:', error);
-        // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+        console.error('❌ Failed to update task in Firestore:', error);
+        console.error('   Error details:', error);
       });
     }
   }, [user]);

@@ -175,8 +175,15 @@ const createUserDocument = async (user: User, customNickname?: string): Promise<
     settings: DEFAULT_SETTINGS
   };
 
-  await setDoc(userRef, newUserData);
-  console.log('✅ Created new user document in Firestore:', user.uid);
+  console.log('📝 Attempting to write user document to Firestore for:', user.uid);
+  
+  try {
+    await setDoc(userRef, newUserData);
+    console.log('✅ Created new user document in Firestore:', user.uid);
+  } catch (error) {
+    console.error('❌ Failed to create user document:', error);
+    throw error;
+  }
   
   return newUserData;
 };
@@ -206,14 +213,23 @@ export const getUserDocument = async (uid: string): Promise<FirestoreUserDocumen
     return null;
   }
 
-  const userRef = fbPaths.userDoc(uid);
-  const userSnap = await getDoc(userRef);
+  console.log('📖 Attempting to read user document from Firestore for:', uid);
   
-  if (userSnap.exists()) {
-    return userSnap.data() as FirestoreUserDocument;
+  try {
+    const userRef = fbPaths.userDoc(uid);
+    const userSnap = await getDoc(userRef);
+    
+    if (userSnap.exists()) {
+      console.log('✅ User document read successfully');
+      return userSnap.data() as FirestoreUserDocument;
+    }
+    
+    console.log('📭 User document does not exist');
+    return null;
+  } catch (error) {
+    console.error('❌ Failed to read user document:', error);
+    throw error;
   }
-  
-  return null;
 };
 
 /**
@@ -231,14 +247,18 @@ export const ensureUserDocument = async (user: User, customNickname?: string): P
     return null;
   }
 
+  console.log('🔍 Checking if user document exists for:', user.uid);
+  
   try {
     const existingUser = await getUserDocument(user.uid);
     
     if (existingUser) {
+      console.log('✅ User document found, updating lastLoginAt');
       // User exists, update last login
       await updateLastLogin(user.uid);
       return existingUser;
     } else {
+      console.log('📝 User document NOT found, creating new document');
       // New user, create document with optional custom nickname
       return await createUserDocument(user, customNickname);
     }

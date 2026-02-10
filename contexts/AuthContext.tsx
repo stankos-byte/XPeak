@@ -131,13 +131,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(firebaseUser);
       
       if (firebaseUser) {
+        console.log('🔐 User authenticated:', {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          emailVerified: firebaseUser.emailVerified
+        });
+        
         try {
+          // Get and log the ID token to verify auth is working
+          const token = await firebaseUser.getIdToken();
+          console.log('🎫 Auth token obtained (first 20 chars):', token?.substring(0, 20));
+          
           // Check for pending nickname in state or localStorage
           const nickname = pendingNickname || window.localStorage.getItem(NICKNAME_FOR_SIGN_UP_KEY) || undefined;
           
           // Ensure user document exists in Firestore (creates if new, updates lastLoginAt if existing)
           const userDoc = await ensureUserDocument(firebaseUser, nickname);
           setUserDocument(userDoc);
+          console.log('✅ User document ensured successfully');
           
           // Clear pending nickname after use
           if (nickname) {

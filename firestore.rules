@@ -31,56 +31,56 @@ service cloud.firestore {
     // ==========================================
     match /users/{userId} {
       // Allow authenticated users to read any user's public profile (for leaderboards, friend search)
-      allow read: if isAuthenticated();
+      allow read: if request.auth != null;
       
       // Users can only write to their own document
-      allow write: if isOwner(userId);
+      allow write: if request.auth != null && request.auth.uid == userId;
       
       // Friends subcollection - only owner can read/write
       match /friends/{friendId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // Tasks subcollection - only owner can read/write
       match /tasks/{taskId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // Quests subcollection - only owner can read/write
       match /quests/{questId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // Oracle Chat subcollection - only owner can read/write
       match /oracleChat/{messageId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // Active Challenges subcollection - only owner can read/write
       match /activeChallenges/{challengeId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // History subcollection - only owner can read/write
       match /history/{date} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // Archived History subcollection - only owner can read/write
       match /archivedHistory/{archiveId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // Subscription subcollection - owner can read, only Cloud Functions can write
       match /subscription/{docId} {
-        allow read: if isOwner(userId);
+        allow read: if request.auth != null && request.auth.uid == userId;
         allow write: if false; // Only Cloud Functions can write
       }
       
       // Notifications subcollection - owner can read and update (mark as read), only Cloud Functions can create/delete
       match /notifications/{notificationId} {
-        allow read: if isOwner(userId);
-        allow update: if isOwner(userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow update: if request.auth != null && request.auth.uid == userId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
         allow create, delete: if false; // Only Cloud Functions can create/delete
       }
       
@@ -91,12 +91,12 @@ service cloud.firestore {
       
       // Goals subcollection - only owner can read/write
       match /goals/{goalId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
       
       // Templates subcollection - only owner can read/write
       match /templates/{templateId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
     
@@ -150,19 +150,16 @@ service cloud.firestore {
     // ==========================================
     // CONFIG COLLECTION
     // ==========================================
+    match /config/maintenance {
+      // Public read access for maintenance status
+      allow read: if true;
+      allow write: if false;
+    }
+    
     match /config/{document} {
-      // Maintenance document - public read access, admin write only
-      match /maintenance {
-        // Allow anyone to read maintenance status (even unauthenticated)
-        allow read: if true;
-        
-        // Only allow writes from Cloud Functions/Admin SDK
-        // (In production, you'd set this via admin panel or cloud functions)
-        allow write: if false;
-      }
-      
-      // Default: deny access to other config documents
-      allow read, write: if false;
+      // Other config documents
+      allow read: if true;
+      allow write: if false;
     }
     
     // ==========================================

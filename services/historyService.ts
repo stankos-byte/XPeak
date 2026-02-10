@@ -21,7 +21,7 @@ export interface ArchivedHistory {
   totalEntries: number;
 }
 
-const MAX_ACTIVE_DAYS = 365; // Keep 1 year of daily aggregates active
+const MAX_ACTIVE_DAYS = 30; // Keep 30 days of history to prevent app slowdown
 
 /**
  * Converts a date string (ISO or any format) to YYYY-MM-DD format

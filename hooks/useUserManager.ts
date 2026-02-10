@@ -79,6 +79,8 @@ const getInitialUserLocal = (): UserProfile => {
     }
     
     // Process history to ensure it's within limits and archive old entries
+    // Note: This limits to 30 days and archives older entries to prevent app slowdown
+    // Only applies to anonymous users (localStorage data)
     const { activeHistory, archivedData } = processHistory(historyToProcess);
     
     // Store archived data if any exists (scoped by anonymous session)
@@ -147,8 +149,34 @@ export const useUserManager = (): UseUserManagerReturn => {
 
     const loadUserData = async () => {
       setIsLoading(true);
+      
+      // IMMEDIATE: Load cached data from localStorage first for instant UI
+      // This provides immediate feedback while network request completes
+      const cachedUserKey = `${STORAGE_KEYS.USER}_cached_${authUser.uid}`;
+      const cachedUser = storage.get<Partial<UserProfile> | null>(cachedUserKey, null, authUser.uid);
+      if (cachedUser && cachedUser.totalXP !== undefined) {
+        console.log('📦 Loading cached data:', { 
+          historyDays: cachedUser.history?.length || 0, 
+          totalXP: cachedUser.totalXP 
+        });
+        // Show cached data immediately (including history if available)
+        isSyncingRef.current = true;
+        setUser(prev => ({
+          ...prev,
+          name: cachedUser.name || prev.name,
+          nickname: cachedUser.nickname || prev.nickname,
+          totalXP: cachedUser.totalXP,
+          level: cachedUser.level || 0,
+          identity: cachedUser.identity || prev.identity,
+          history: cachedUser.history || prev.history // Include cached history
+        }));
+        isSyncingRef.current = false;
+      } else {
+        console.log('📭 No cache found for user:', authUser.uid);
+      }
+      
       try {
-        // Get user document from Firestore
+        // NETWORK: Now fetch fresh data from Firestore
         const firestoreUser = await getUserDocument(authUser.uid);
         
         if (firestoreUser) {
@@ -164,6 +192,10 @@ export const useUserManager = (): UseUserManagerReturn => {
 
           // Get history from subcollection
           const history = await getHistory(authUser.uid);
+          console.log('🔥 Loaded from Firestore:', { 
+            historyDays: history.length, 
+            totalXP: firestoreUser.totalXP 
+          });
 
           // Migration: If nickname is missing, use name as default and update Firestore
           const nickname = firestoreUser.nickname || firestoreUser.name;
@@ -233,19 +265,60 @@ export const useUserManager = (): UseUserManagerReturn => {
             // Use the local data since we just migrated it
             isSyncingRef.current = true;
             setUser(localUser);
-            isSyncingRef.current = false;
+            // Explicitly save to cache after migration
+            setTimeout(() => {
+              isSyncingRef.current = false;
+              const cachedUserKey = `${STORAGE_KEYS.USER}_cached_${authUser.uid}`;
+              const cacheData = {
+                name: localUser.name,
+                nickname: localUser.nickname,
+                totalXP: localUser.totalXP,
+                level: localUser.level,
+                identity: localUser.identity,
+                history: localUser.history
+              };
+              storage.set(cachedUserKey, cacheData, authUser.uid);
+            }, 0);
             
             console.log('✅ Migration complete! All data synced to cloud.');
           } else {
             isSyncingRef.current = true;
             setUser(userProfile);
-            isSyncingRef.current = false;
+            // Explicitly save to cache after loading from Firestore
+            setTimeout(() => {
+              isSyncingRef.current = false;
+              // Save fresh Firestore data to cache for next refresh
+              const cachedUserKey = `${STORAGE_KEYS.USER}_cached_${authUser.uid}`;
+              const cacheData = {
+                name: userProfile.name,
+                nickname: userProfile.nickname,
+                totalXP: userProfile.totalXP,
+                level: userProfile.level,
+                identity: userProfile.identity,
+                history: userProfile.history
+              };
+              storage.set(cachedUserKey, cacheData, authUser.uid);
+              console.log('💾 Saved to cache:', { 
+                historyDays: cacheData.history?.length || 0, 
+                totalXP: cacheData.totalXP 
+              });
+            }, 0);
           }
         }
         
         initialLoadCompleteRef.current = true;
-      } catch (error) {
+      } catch (error: any) {
         console.error('Failed to load user data from Firestore:', error);
+        
+        // If permission denied, keep using cached local data instead of resetting
+        if (error?.code === 'permission-denied' || error?.message?.includes('permission')) {
+          console.warn('⚠️ Sync Error: Permission denied. Using cached local data.');
+          // Don't overwrite user state - keep the cached data that was loaded at line 165
+          // User will continue with cached data until permissions are fixed
+        } else {
+          // For other errors, still use cached data if available
+          console.warn('⚠️ Sync Error: Unable to load from Firestore. Using cached local data.');
+        }
       } finally {
         setIsLoading(false);
       }
@@ -294,10 +367,29 @@ export const useUserManager = (): UseUserManagerReturn => {
 
   // Save to localStorage when not authenticated (fallback)
   useEffect(() => { 
-    if (isSyncingRef.current) return;
+    if (isSyncingRef.current) {
+      console.log('⏸️ Cache save blocked - syncing in progress');
+      return;
+    }
     
     if (!authUser) {
       persistenceService.set(STORAGE_KEYS.USER, user, null); 
+    } else {
+      // Cache authenticated user data for instant loading on refresh
+      const cachedUserKey = `${STORAGE_KEYS.USER}_cached_${authUser.uid}`;
+      const cacheData = {
+        name: user.name,
+        nickname: user.nickname,
+        totalXP: user.totalXP,
+        level: user.level,
+        identity: user.identity,
+        history: user.history // Include history in cache to prevent data loss
+      };
+      storage.set(cachedUserKey, cacheData, authUser.uid);
+      console.log('💾 Auto-saved to cache (useEffect):', { 
+        historyDays: cacheData.history?.length || 0, 
+        totalXP: cacheData.totalXP 
+      });
     }
   }, [user, authUser]);
 
@@ -346,7 +438,8 @@ export const useUserManager = (): UseUserManagerReturn => {
       }
 
       // Save to Firestore if authenticated
-      if (authUser) {
+      if (authUser?.uid) {
+        console.log('💾 Saving XP change for user:', authUser.uid, { newXP: newTotalXP, newLevel });
         // Convert skills to Firestore format
         const firestoreSkills = Object.fromEntries(
           Object.entries(newSkills).map(([key, value]) => [key, { xp: value.xp, level: value.level }])
@@ -356,17 +449,28 @@ export const useUserManager = (): UseUserManagerReturn => {
           totalXP: newTotalXP,
           level: newLevel,
           skills: firestoreSkills
-        }).catch(console.error);
+        }).catch((error) => {
+          console.error('❌ Failed to save user profile:', error);
+          console.error('   User ID:', authUser?.uid);
+          console.error('   Error details:', error);
+        });
 
         // Save the history entry
         const dateKey = new Date().toISOString().split('T')[0];
         const historyEntry = activeHistory.find(h => h.date === dateKey);
         if (historyEntry) {
+          console.log('💾 Saving history entry for date:', dateKey);
           saveHistoryEntry(authUser.uid, historyEntry).catch((error) => {
-            console.error('Failed to save history entry to Firestore:', error);
-            // Note: UI is already updated optimistically. Consider adding toast notification for failures.
+            console.error('❌ Failed to save history entry to Firestore:', error);
+            console.error('   User ID:', authUser?.uid);
+            console.error('   Date:', dateKey);
+            console.error('   Entry:', historyEntry);
+            console.error('   Error details:', error);
           });
         }
+      } else {
+        console.warn('⚠️ Cannot save XP change - user not authenticated');
+        console.warn('   authUser:', authUser);
       }
 
       return {
